@@ -11,7 +11,7 @@
 - **Human-in-the-loop**: הקפאת בוט והעברה לסוכן אנושי.
 
 ## משתני סביבה נדרשים (Railway / .env)
-- `OPENAI_API_KEY`
+- `GIMINI_AI_API_KEY`
 - `SERPAPI_API_KEY`
 - `WHATSAPP_ACCESS_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
