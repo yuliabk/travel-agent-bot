@@ -6,7 +6,8 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Query, Response, BackgroundTasks, status
 from fastapi.responses import PlainTextResponse
-from openai import OpenAI
+from google import genai
+from google.genai import types
 import redis
 from weasyprint import HTML
 
@@ -17,10 +18,12 @@ from pydantic_models import (
     generate_maps_url
 )
 
-app = FastAPI(title="YB Travel Agent API")
+app = FastAPI(title="YB Travel Agent API - Gemini Powered")
 
-# אתחול שירותים ומשתני סביבה
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# אתחול לקוחות ומשתני סביבה
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
+
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
@@ -51,19 +54,15 @@ class SessionManager:
     def save(phone: str, session: dict):
         redis_client.setex(f"travel_session:{phone}", SESSION_TTL, json.dumps(session, ensure_ascii=False))
 
-# --- מנועי חיפוש Google Flights ו-Google Hotels דרך SerpApi ---
+# --- מנועי Google Flights ו-Google Hotels דרך SerpApi ---
 
 def get_iata_code(city_or_country: str) -> str:
     try:
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Return ONLY the 3-letter IATA airport code for the primary airport of the given city/country. Output nothing else."},
-                {"role": "user", "content": city_or_country}
-            ],
-            max_tokens=5
+        response = ai_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"Return ONLY the 3-letter IATA airport code for the primary airport of: {city_or_country}. Output nothing else."
         )
-        return res.choices[0].message.content.strip().upper()[:3]
+        return response.text.strip().upper()[:3]
     except Exception:
         return "PRG"
 
@@ -172,32 +171,34 @@ def mark_message_as_read(message_id: str):
     payload = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
     requests.post(url, json=payload, headers=headers, timeout=5)
 
-def download_and_transcribe_audio(media_id: str) -> str:
+def download_and_transcribe_audio_gemini(media_id: str) -> str:
+    """
+    מורידה את קובץ האודיו מוואטסאפ ומעבירה אותו ישירות ל-Gemini לתמלול
+    """
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     meta_url = f"https://graph.facebook.com/v20.0/{media_id}"
     res = requests.get(meta_url, headers=headers, timeout=10).json()
     download_url = res.get("url")
 
-    audio_content = requests.get(download_url, headers=headers, timeout=15).content
-    audio_buffer = io.BytesIO(audio_content)
-    audio_buffer.name = "voice_note.ogg"
+    audio_bytes = requests.get(download_url, headers=headers, timeout=15).content
 
-    transcription = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio_buffer,
-        language="he"
+    response = ai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            types.Part.from_bytes(
+                data=audio_bytes,
+                mime_type="audio/ogg"
+            ),
+            "תמלל במדויק מילה במילה את ההקלטה הקולית הזו לעברית. החזר אך ורק את הטקסט המתומלל ללא שום הקדמות או תוספות."
+        ]
     )
-    return transcription.text
+    return response.text.strip()
 
 def upload_and_send_pdf(to_phone: str, pdf_bytes: io.BytesIO, filename: str, caption: str):
-    """
-    מעלה קובץ PDF לשרתי Meta ושולחת אותו כמסמך ללקוח
-    """
     if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
         print(f"[LOCAL LOG] PDF generated ({len(pdf_bytes.getvalue())} bytes) for {to_phone}")
         return
 
-    # 1. העלאת המדיה
     upload_url = f"https://graph.facebook.com/v20.0/{WHATSAPP_PHONE_ID}/media"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
     files = {"file": (filename, pdf_bytes.getvalue(), "application/pdf")}
@@ -207,7 +208,6 @@ def upload_and_send_pdf(to_phone: str, pdf_bytes: io.BytesIO, filename: str, cap
     up_res.raise_for_status()
     media_id = up_res.json().get("id")
 
-    # 2. שליחת הודעת מסמך
     msg_url = f"https://graph.facebook.com/v20.0/{WHATSAPP_PHONE_ID}/messages"
     payload = {
         "messaging_product": "whatsapp",
@@ -222,11 +222,11 @@ def upload_and_send_pdf(to_phone: str, pdf_bytes: io.BytesIO, filename: str, cap
     }
     requests.post(msg_url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}, json=payload, timeout=10)
 
-# --- מנוע ה-PDF המסכם (HTML to PDF) ---
+# --- הפקת מסמך PDF מסכם ---
 
 def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) -> io.BytesIO:
     today_str = date.today().strftime('%d/%m/%Y')
-    
+
     html = f"""
     <!DOCTYPE html>
     <html dir="rtl" lang="he">
@@ -371,7 +371,7 @@ def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) ->
     pdf_buffer.seek(0)
     return pdf_buffer
 
-# --- לוגיקת סוכן ה-AI ו-System Prompts המעודכנים ---
+# --- לוגיקת סוכן ה-AI מבוסס Gemini עם Structured Outputs ---
 
 def check_human_handoff(text: str) -> tuple[bool, str]:
     explicit_kws = ["נציג", "אדם", "סוכן אמיתי", "בן אדם", "תעביר אותי", "שירות לקוחות", "לדבר עם מישהו"]
@@ -379,26 +379,30 @@ def check_human_handoff(text: str) -> tuple[bool, str]:
         if kw in text:
             return True, f"בקשת נציג מפורשת: '{kw}'"
 
-    system_prompt = """
+    system_instruction = """
     אתה מנתח שיחות עבור שירות לקוחות של סוכנות נסיעות.
     זהה האם הודעת הלקוח מביעה כעס קיצוני, תסכול עמוק מהבוט, בקשה מורכבת שחורגת מתכנון טיול רגיל, או דרישה חד-משמעית לטיפול אנושי.
     היה רגיש לתסכול והעבר לנציג אנושי בכל מקרה של ספק.
     """
 
-    completion = client.beta.chat.completions.parse(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text}
-        ],
-        response_format=TriageResult
-    )
-    res = completion.choices[0].message.parsed
-    return res.needs_human, res.reason
+    try:
+        response = ai_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=text,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=TriageResult
+            )
+        )
+        res: TriageResult = response.parsed
+        return res.needs_human, res.reason
+    except Exception:
+        return False, ""
 
 def extract_requirements(raw_text: str) -> ClientTravelRequirements:
     today_str = date.today().isoformat()
-    system_prompt = f"""
+    system_instruction = f"""
     אתה עוזר מומחה לסוכן נסיעות. תפקידך לחלץ דרישות טיול מדויקות מתוך פניית לקוח ולמלא את סכמת ה-Pydantic.
     
     עקרונות חילוץ קריטיים:
@@ -406,18 +410,19 @@ def extract_requirements(raw_text: str) -> ClientTravelRequirements:
     2. ברירות מחדל חכמות: אם הלקוח לא ציין תקציב יומי, הגדר 80 במטבע USD. אם לא צוין קצב, הגדר 'moderate'.
     3. זהה במדויק אילוצי כשרות, שבת, עגלת תינוק, והרכב נוסעים מדויק.
     """
-    completion = client.beta.chat.completions.parse(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": raw_text}
-        ],
-        response_format=ClientTravelRequirements
+    response = ai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=raw_text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=ClientTravelRequirements
+        )
     )
-    return completion.choices[0].message.parsed
+    return response.parsed
 
 def build_itinerary(req: ClientTravelRequirements) -> TripItinerary:
-    system_prompt = """
+    system_instruction = """
     אתה מתכנן טיולים ומומחה גאוגרפי בינלאומי בעל שם עולמי עבור סוכנות נסיעות מובילה.
     תפקידך לתכנן תוכנית טיול מפורטת, ישימה ואיכותית לפי דרישות הלקוח.
 
@@ -430,21 +435,22 @@ def build_itinerary(req: ClientTravelRequirements) -> TripItinerary:
 
     user_prompt = f"בנה תוכנית טיול מלאה על פי הדרישות הבאות:\n{req.model_dump_json(indent=2)}"
 
-    completion = client.beta.chat.completions.parse(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        response_format=TripItinerary
+    response = ai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=TripItinerary
+        )
     )
-    itinerary = completion.choices[0].message.parsed
+    itinerary: TripItinerary = response.parsed
     for day in itinerary.days:
         day.maps_url = generate_maps_url(day.origin, day.stops, day.destination, day.travel_mode)
     return itinerary
 
 def update_itinerary(current_itinerary: dict, feedback: str) -> TripItinerary:
-    system_prompt = """
+    system_instruction = """
     אתה מתכנן טיולים בכיר. קיבלת תוכנית טיול קיימת ובקשת שינוי או דיוק מלקוח.
     
     עקרונות עבודה:
@@ -461,15 +467,16 @@ def update_itinerary(current_itinerary: dict, feedback: str) -> TripItinerary:
     "{feedback}"
     """
 
-    completion = client.beta.chat.completions.parse(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        response_format=TripItinerary
+    response = ai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=TripItinerary
+        )
     )
-    itinerary = completion.choices[0].message.parsed
+    itinerary: TripItinerary = response.parsed
     for day in itinerary.days:
         day.maps_url = generate_maps_url(day.origin, day.stops, day.destination, day.travel_mode)
     return itinerary
@@ -484,7 +491,7 @@ def process_interaction_task(sender_phone: str, msg_type: str, msg_data: dict):
 
         raw_text_incoming = msg_data.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
 
-        # פקודת שחרור בוט ע"י הסוכן
+        # פקודת שחרור בוט על ידי סוכן
         if sender_phone == AGENT_PHONE_NUMBER and raw_text_incoming.startswith("/resume"):
             parts = raw_text_incoming.split()
             if len(parts) > 1:
@@ -500,10 +507,10 @@ def process_interaction_task(sender_phone: str, msg_type: str, msg_data: dict):
         if session.get("is_human_takeover", False):
             return
 
-        # מענה מידי ללקוח למניעת חוסר ודאות
+        # מענה מידי ללקוח
         if msg_type == "audio":
             send_whatsapp_text(sender_phone, "היי! קיבלנו את ההקלטה שלך 🎧 מתמללים את הבקשה, בודקים טיסות ומלונות ומכינים עבורך קובץ הצעה מסודר...")
-            user_text = download_and_transcribe_audio(msg_data.get("audio", {}).get("id"))
+            user_text = download_and_transcribe_audio_gemini(msg_data.get("audio", {}).get("id"))
         else:
             send_whatsapp_text(sender_phone, "היי! קיבלנו את הבקשה ✈️ כבר בודקים טיסות, מלונות ומפיקים עבורך מסמך טיול אישי ומפורט...")
             user_text = raw_text_incoming
@@ -532,7 +539,7 @@ def process_interaction_task(sender_phone: str, msg_type: str, msg_data: dict):
             req = extract_requirements(user_text)
             itinerary = build_itinerary(req)
 
-            # איתור טיסות ומלונות דרך Google (SerpApi)
+            # איתור טיסות ומלונות דרך SerpApi
             dest_iata = get_iata_code(req.trip_overview.destination)
             flights = search_flights_google(
                 origin="TLV",
@@ -557,7 +564,7 @@ def process_interaction_task(sender_phone: str, msg_type: str, msg_data: dict):
         pdf_file = build_pdf_document(itinerary, flights, hotels)
         filename = f"Trip_Plan_{itinerary.destination}.pdf"
 
-        # הודעת סיכום קצרה + המסמך המצורף
+        # הודעת סיכום ומסמך מצורף
         whatsapp_summary = (
             f"✈️ *תוכנית הטיול שלך ל{itinerary.destination} מוכנה!*\n\n"
             f"הכנתי עבורכם מסמך מסכם הכולל:\n"
@@ -579,8 +586,8 @@ def process_interaction_task(sender_phone: str, msg_type: str, msg_data: dict):
 def root():
     return {
         "status": "online",
-        "service": "YB Travel Agent API",
-        "features": ["WhatsApp Bot", "SerpApi Flights & Hotels", "WeasyPrint PDF Generation", "Redis Session"]
+        "engine": "Google Gemini 2.5 Flash",
+        "service": "YB Travel Agent API"
     }
 
 @app.get("/webhook")
