@@ -1,0 +1,31 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/travel-agent-webform/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model TripInquiry {
+  id              String   @id @default(cuid())
+  name            String
+  email           String
+  phone           String
+  destination     String
+  dates           String
+  budgetLevel     String
+  adults          Int      @default(1)
+  children        Int      @default(0)
+  travelStyles    String[] @default([])
+  specialRequests String?  @db.Text
+  aiResponse      String?  @db.Text
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([email])
+  @@index([createdAt])
+}

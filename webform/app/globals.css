@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 50% 98%;
+    --foreground: 220 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 12%;
+
+    --primary: 24 85% 55%;
+    --primary-foreground: 0 0% 18%;
+
+    --secondary: 174 60% 40%;
+    --secondary-foreground: 0 0% 16%;
+
+    --muted: 30 20% 94%;
+    --muted-foreground: 220 10% 44%;
+
+    --accent: 38 90% 55%;
+    --accent-foreground: 220 20% 12%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 10%;
+
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 24 85% 55%;
+
+    --radius: 0.625rem;
+    --radius-sm: calc(0.625rem - 4px);
+    --radius-lg: calc(0.625rem + 4px);
+    --radius-full: 9999px;
+
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-2xl: 48px;
+    --spacing-3xl: 64px;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.07), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+    --duration-fast: 150ms;
+    --duration-normal: 250ms;
+    --duration-slow: 350ms;
+
+    --chart-1: 24 85% 55%;
+    --chart-2: 174 60% 40%;
+    --chart-3: 38 90% 55%;
+    --chart-4: 220 20% 30%;
+    --chart-5: 340 65% 55%;
+  }
+
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 30 20% 96%;
+
+    --card: 220 18% 12%;
+    --card-foreground: 30 20% 96%;
+
+    --popover: 220 18% 12%;
+    --popover-foreground: 30 20% 96%;
+
+    --primary: 24 85% 55%;
+    --primary-foreground: 0 0% 18%;
+
+    --secondary: 174 50% 35%;
+    --secondary-foreground: 0 0% 4%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 220 10% 60%;
+
+    --accent: 38 80% 50%;
+    --accent-foreground: 220 20% 8%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 15% 22%;
+    --input: 220 15% 22%;
+    --ring: 24 85% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+}

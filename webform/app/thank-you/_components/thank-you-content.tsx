@@ -1,0 +1,50 @@
+'use client'
+
+import { motion } from 'framer-motion'
+import { CheckCircle2, Plane, ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import Link from 'next/link'
+
+export function ThankYouContent() {
+  return (
+    <div className="mx-auto max-w-[600px] px-4 sm:px-6 text-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, type: 'spring' }}
+      >
+        <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+          <CheckCircle2 className="h-10 w-10 text-green-600" />
+        </div>
+
+        <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+          תודה רבה!
+        </h1>
+        <p className="text-lg text-muted-foreground mb-8">
+          הבקשה שלכם התקבלה בהצלחה. נחזור אליכם בהקדם עם פרטים נוספים.
+        </p>
+
+        <div className="bg-card rounded-xl shadow-[var(--shadow-md)] p-6 mb-8">
+          <Plane className="h-8 w-8 text-primary mx-auto mb-3" />
+          <h3 className="font-display font-semibold text-lg mb-2">מה קורה עכשיו?</h3>
+          <p className="text-sm text-muted-foreground">
+            הצוות שלנו בודק את הבקשה ועובד על תוכנית הטיול המושלמת.
+            אם כבר קיבלתם את התוכנית, תוכלו לשמור אותה כ-PDF או להדפיס.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Button asChild size="lg">
+            <Link href="/book">
+              <Plane className="ml-2 h-5 w-5" />
+              תכננו טיול נוסף
+            </Link>
+          </Button>
+          <Button variant="outline" asChild size="lg">
+            <Link href="/">חזרה לדף הבית</Link>
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
