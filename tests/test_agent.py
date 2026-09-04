@@ -2,6 +2,7 @@
 
 All Google Gemini and SerpApi calls are mocked; no network I/O happens.
 """
+
 from datetime import date, timedelta
 from unittest.mock import MagicMock
 
@@ -45,18 +46,34 @@ def mocked_agent(monkeypatch, sample_itinerary, req_stub):
     # Mock external travel tools.
     monkeypatch.setattr(agent_mod.travel_tools, "get_iata_code", lambda c, d: "FCO")
     monkeypatch.setattr(
-        agent_mod.travel_tools, "search_flights_google",
-        lambda **kw: [{"airline": "ELAL", "price": "$500", "departure_time": "", "arrival_time": "", "type": "טיסה ישירה"}],
+        agent_mod.travel_tools,
+        "search_flights_google",
+        lambda **kw: [
+            {"airline": "ELAL", "price": "$500", "departure_time": "", "arrival_time": "", "type": "טיסה ישירה"}
+        ],
     )
     monkeypatch.setattr(
-        agent_mod.travel_tools, "search_hotels_google",
-        lambda **kw: [{"name": "Hotel Roma", "stars": "", "rating": "", "lowest_price": "120", "booking_price": None, "agoda_price": None}],
+        agent_mod.travel_tools,
+        "search_hotels_google",
+        lambda **kw: [
+            {
+                "name": "Hotel Roma",
+                "stars": "",
+                "rating": "",
+                "lowest_price": "120",
+                "booking_price": None,
+                "agoda_price": None,
+            }
+        ],
     )
-    monkeypatch.setattr(agent_mod.travel_tools, "build_pdf_document", lambda it, f, h: __import__("io").BytesIO(b"%PDF fake"))
+    monkeypatch.setattr(
+        agent_mod.travel_tools, "build_pdf_document", lambda it, f, h: __import__("io").BytesIO(b"%PDF fake")
+    )
     return ta
 
 
 # --- Basic response ----------------------------------------------------------
+
 
 def test_handle_message_basic_response(mocked_agent):
     resp = mocked_agent.handle_message("whatsapp", "user-1", "Trip to Rome next month for 2")
@@ -86,6 +103,7 @@ def test_handle_message_without_ai_client_returns_error(monkeypatch):
 
 # --- Session history management ---------------------------------------------
 
+
 def test_handle_message_records_history(mocked_agent):
     from src.core.session import session_manager
 
@@ -104,7 +122,8 @@ def test_second_message_updates_existing_itinerary(mocked_agent, monkeypatch):
     mocked_agent.handle_message("whatsapp", "u2", "Plan Rome")
     # extract_requirements must NOT be used on the second turn.
     monkeypatch.setattr(
-        mocked_agent, "extract_requirements",
+        mocked_agent,
+        "extract_requirements",
         lambda text: (_ for _ in ()).throw(AssertionError("extract should not run on update")),
     )
     resp = mocked_agent.handle_message("whatsapp", "u2", "Add a food tour on day 1")
@@ -116,16 +135,19 @@ def test_second_message_updates_existing_itinerary(mocked_agent, monkeypatch):
 
 # --- Triage / human handoff --------------------------------------------------
 
+
 def test_explicit_keyword_triggers_handoff(mocked_agent, monkeypatch):
     # Use the real triage logic (the fixture stubs it out by default).
     monkeypatch.setattr(
-        mocked_agent, "check_human_handoff",
+        mocked_agent,
+        "check_human_handoff",
         lambda text: TravelAgent.check_human_handoff(mocked_agent, text),
     )
     resp = mocked_agent.handle_message("whatsapp", "angry", "אני רוצה לדבר עם נציג אנושי")
     assert resp.handoff is True
     assert resp.handoff_reason  # non-empty reason
     from src.core.session import session_manager
+
     session = session_manager.get("whatsapp", "angry")
     assert session["is_human_takeover"] is True
 

@@ -8,11 +8,11 @@ and replies via SMTP (attaching the generated PDF when available).
 Uses only the Python standard library (``imaplib``, ``smtplib``, ``email``) so
 no extra native dependencies are required.
 """
+
 import email
 import imaplib
 import smtplib
 import threading
-import time
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import parseaddr

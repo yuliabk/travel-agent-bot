@@ -6,6 +6,7 @@ exact same logic through the agent core. All network calls are defensive: a
 failure returns an empty result instead of raising, so a single flaky upstream
 never crashes a whole request.
 """
+
 import io
 from datetime import date
 from typing import List, Optional
@@ -198,9 +199,7 @@ def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) ->
     html += '<div class="section-title">🗺️ מסלול יומי מפורט ועלויות</div>'
     for day in itinerary.days:
         map_html = (
-            f'<a class="maps-link" href="{day.maps_url}">📍 פתיחת מסלול ניווט ב-Google Maps</a>'
-            if day.maps_url
-            else ""
+            f'<a class="maps-link" href="{day.maps_url}">📍 פתיחת מסלול ניווט ב-Google Maps</a>' if day.maps_url else ""
         )
         html += f"""
         <div class="day-box">

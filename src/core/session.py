@@ -12,6 +12,7 @@ Two backends are supported transparently:
 A session is keyed by ``{channel}:{user_id}`` which means the same person is
 tracked independently on WhatsApp, Email and the Web Form.
 """
+
 import json
 import threading
 import time
@@ -133,16 +134,14 @@ class SessionManager:
         # Keep conversation history bounded to avoid unbounded growth.
         history = session.get("history", [])
         if len(history) > config.MAX_HISTORY_MESSAGES:
-            session["history"] = history[-config.MAX_HISTORY_MESSAGES:]
+            session["history"] = history[-config.MAX_HISTORY_MESSAGES :]
         try:
             self._backend.set(key, session, self._ttl)
         except Exception as exc:
             logger.error("Session save failed for %s: %s", key, exc)
 
     def append_history(self, session: Dict[str, Any], role: str, text: str) -> None:
-        session.setdefault("history", []).append(
-            {"role": role, "text": text, "ts": time.time()}
-        )
+        session.setdefault("history", []).append({"role": role, "text": text, "ts": time.time()})
 
     def delete(self, channel: str, user_id: str) -> None:
         try:

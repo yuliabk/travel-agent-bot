@@ -7,11 +7,12 @@ payload ``{channel, user_id, message, context}`` and receive an
 planning, flight/hotel search, PDF generation, conversation memory) regardless
 of how the request arrived.
 """
+
 import io
 import json
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from pydantic_models import (
     ClientTravelRequirements,
@@ -28,8 +29,13 @@ logger = get_logger("agent")
 
 # Explicit keywords that always force a human handoff.
 _EXPLICIT_HANDOFF_KEYWORDS = [
-    "נציג", "אדם", "סוכן אמיתי", "בן אדם", "תעביר אותי",
-    "שירות לקוחות", "לדבר עם מישהו",
+    "נציג",
+    "אדם",
+    "סוכן אמיתי",
+    "בן אדם",
+    "תעביר אותי",
+    "שירות לקוחות",
+    "לדבר עם מישהו",
 ]
 
 
@@ -324,10 +330,7 @@ class TravelAgent:
         except Exception as exc:
             logger.exception("handle_message failed for %s:%s: %s", channel, user_id, exc)
             return AgentResponse(
-                text=(
-                    "אירעה תקלה זמנית בעיבוד הבקשה. נסו שוב בעוד רגע, ואם התקלה חוזרת "
-                    "נשמח שתפרטו יעד ותאריכים."
-                ),
+                text=("אירעה תקלה זמנית בעיבוד הבקשה. נסו שוב בעוד רגע, ואם התקלה חוזרת " "נשמח שתפרטו יעד ותאריכים."),
                 error=True,
             )
 

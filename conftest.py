@@ -7,13 +7,14 @@ deterministic test values. All external services (Google Gemini, SerpApi, Meta
 WhatsApp API, IMAP/SMTP) are mocked in the individual test modules; nothing here
 performs real network I/O.
 """
+
 import io
 import os
 
 # --- Deterministic test environment (must run before app imports) -----------
-os.environ.setdefault("GEMINI_API_KEY", "")          # keep AI client uninitialised
-os.environ.setdefault("SERPAPI_API_KEY", "")         # skip real flight/hotel calls
-os.environ.pop("REDIS_URL", None)                    # force in-memory session store
+os.environ.setdefault("GEMINI_API_KEY", "")  # keep AI client uninitialised
+os.environ.setdefault("SERPAPI_API_KEY", "")  # skip real flight/hotel calls
+os.environ.pop("REDIS_URL", None)  # force in-memory session store
 os.environ["WHATSAPP_VERIFY_TOKEN"] = "test_verify_token"
 os.environ["WHATSAPP_APP_SECRET"] = "test_app_secret"
 os.environ["AGENT_PHONE_NUMBER"] = "972500000000"
@@ -32,8 +33,8 @@ from pydantic_models import (  # noqa: E402
 )
 from src.core.agent import AgentResponse  # noqa: E402
 
-
 # --- Sample domain objects ---------------------------------------------------
+
 
 @pytest.fixture
 def sample_itinerary() -> TripItinerary:
@@ -80,10 +81,12 @@ def agent_response(sample_pdf_bytes) -> AgentResponse:
 
 # --- App / client fixtures ---------------------------------------------------
 
+
 @pytest.fixture
 def app():
     """The FastAPI application instance (imported lazily after env setup)."""
     import main
+
     return main.app
 
 

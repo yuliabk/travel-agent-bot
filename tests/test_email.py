@@ -2,6 +2,7 @@
 
 IMAP and SMTP are fully mocked; no network I/O or real mailboxes are touched.
 """
+
 import io
 from email.message import EmailMessage
 from email.header import Header
@@ -12,8 +13,8 @@ import pytest
 import src.channels.email as email_mod
 from src.core.agent import AgentResponse
 
-
 # --- Inbound parsing ---------------------------------------------------------
+
 
 def _plain_email(from_addr="client@example.com", subject="Trip request", body="Plan me a trip to Rome"):
     msg = EmailMessage()
@@ -63,6 +64,7 @@ def test_decode_empty_returns_empty():
 
 
 # --- Outbound reply building -------------------------------------------------
+
 
 @pytest.fixture
 def smtp_config(monkeypatch):
@@ -138,6 +140,7 @@ def test_send_email_reply_smtp_failure_returns_false(monkeypatch, smtp_config):
 
 # --- End-to-end inbound processing ------------------------------------------
 
+
 def test_process_email_replies_to_sender(monkeypatch, agent_response):
     replies = {}
 
@@ -183,7 +186,8 @@ def test_process_email_uses_email_as_session_user(monkeypatch, agent_response):
 def test_process_email_suppressed_on_human_takeover(monkeypatch):
     reply_called = {"count": 0}
     monkeypatch.setattr(
-        email_mod, "send_email_reply",
+        email_mod,
+        "send_email_reply",
         lambda *a, **k: reply_called.__setitem__("count", reply_called["count"] + 1),
     )
     suppressed = AgentResponse(text="", meta={"suppressed": True, "reason": "human_takeover"})
@@ -195,6 +199,7 @@ def test_process_email_suppressed_on_human_takeover(monkeypatch):
 
 
 # --- IMAP polling ------------------------------------------------------------
+
 
 def test_poll_once_fetches_and_marks_seen(monkeypatch, agent_response):
     processed = []
@@ -216,7 +221,7 @@ def test_poll_once_fetches_and_marks_seen(monkeypatch, agent_response):
 
     email_mod._poll_once()
 
-    assert len(processed) == 2                      # both unseen messages processed
+    assert len(processed) == 2  # both unseen messages processed
     # Each message flagged as seen.
     seen_calls = [c for c in fake_imap.store.call_args_list if "\\Seen" in c.args]
     assert len(seen_calls) == 2

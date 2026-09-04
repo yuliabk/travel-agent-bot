@@ -5,6 +5,7 @@ This replaces the ad-hoc ``print()`` calls scattered across the original code
 with a single configured logger. A rotating file handler keeps disk usage
 bounded, and the console handler keeps container logs (Railway/Docker) working.
 """
+
 import logging
 import os
 from logging.handlers import RotatingFileHandler
@@ -38,9 +39,7 @@ def _configure_root() -> None:
     try:
         os.makedirs(config.LOG_DIR, exist_ok=True)
         file_path = os.path.join(config.LOG_DIR, config.LOG_FILE)
-        file_handler = RotatingFileHandler(
-            file_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
-        )
+        file_handler = RotatingFileHandler(file_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
     except OSError as exc:  # pragma: no cover
