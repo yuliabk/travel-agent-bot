@@ -5,6 +5,7 @@ All environment variables are read here in one place so the rest of the code
 never touches ``os.environ`` directly. This makes missing/misconfigured
 variables easy to spot and validate.
 """
+
 import os
 
 try:

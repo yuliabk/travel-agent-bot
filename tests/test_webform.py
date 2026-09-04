@@ -2,13 +2,11 @@
 
 The agent core is mocked so no AI/network calls happen.
 """
+
 import importlib
 
 import pytest
 from fastapi.testclient import TestClient
-
-from src.core.agent import AgentResponse
-
 
 VALID_PAYLOAD = {
     "name": "Dana Levi",
@@ -42,6 +40,7 @@ def patch_agent(monkeypatch, agent_response):
 
 # --- Happy path --------------------------------------------------------------
 
+
 def test_webform_valid_returns_200_with_ai_reply(client, patch_agent):
     resp = client.post("/api/webform", json=VALID_PAYLOAD)
     assert resp.status_code == 200
@@ -49,9 +48,9 @@ def test_webform_valid_returns_200_with_ai_reply(client, patch_agent):
     assert body["success"] is True
     assert body["destination"] == "Rome, Italy"
     assert "Rome, Italy" in body["message"]
-    assert body["pdf_base64"] is not None          # PDF was encoded
+    assert body["pdf_base64"] is not None  # PDF was encoded
     assert body["handoff"] is False
-    assert body["email_sent"] is False             # WEBFORM_SEND_EMAIL_REPLY is off
+    assert body["email_sent"] is False  # WEBFORM_SEND_EMAIL_REPLY is off
 
 
 def test_webform_uses_email_as_user_id_and_builds_brief(client, patch_agent):
@@ -73,6 +72,7 @@ def test_webform_minimal_payload_only_required_fields(client, patch_agent):
 
 
 # --- Validation (422) --------------------------------------------------------
+
 
 def test_webform_missing_name_returns_422(client, patch_agent):
     payload = {"email": "x@y.com", "tripDetails": {"destination": "Rome"}}
@@ -105,6 +105,7 @@ def test_webform_too_short_destination_returns_422(client, patch_agent):
 
 # --- Rate limiting -----------------------------------------------------------
 
+
 def test_webform_rate_limiting_returns_429(monkeypatch, agent_response):
     """Rebuild the app with a low web-form limit and confirm the 4th call 429s.
 
@@ -117,12 +118,16 @@ def test_webform_rate_limiting_returns_429(monkeypatch, agent_response):
     os.environ["RATE_LIMIT_WEBFORM"] = "3/minute"
     try:
         from src.core import config as cfg
+
         importlib.reload(cfg)
         from src.core import rate_limit as rl
+
         importlib.reload(rl)
         from src.channels import webform as wf
+
         importlib.reload(wf)
         import main as m
+
         importlib.reload(m)
 
         monkeypatch.setattr(
@@ -142,10 +147,14 @@ def test_webform_rate_limiting_returns_429(monkeypatch, agent_response):
         else:
             os.environ["RATE_LIMIT_WEBFORM"] = orig_webform
         from src.core import config as cfg
+
         importlib.reload(cfg)
         from src.core import rate_limit as rl
+
         importlib.reload(rl)
         from src.channels import webform as wf
+
         importlib.reload(wf)
         import main as m
+
         importlib.reload(m)

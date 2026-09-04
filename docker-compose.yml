@@ -1,0 +1,62 @@
+# =============================================================================
+# YB Travel Agent - Docker Compose stack
+#
+#   bot   -> the FastAPI application (WhatsApp + Email + Web Form channels)
+#   redis -> session store shared by all channels
+#
+# Usage:
+#   1. cp .env.example .env   (fill in your keys)
+#   2. docker compose up -d --build
+#   3. logs:  docker compose logs -f bot
+# =============================================================================
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yb-travel-agent:latest
+    container_name: yb-travel-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # Load all channel/API credentials from .env ...
+    env_file:
+      - .env
+    # ... but force the session store to point at the redis service below,
+    # overriding whatever REDIS_URL is in .env.
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_DIR: /app/logs
+    volumes:
+      # Persist application logs on the host.
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Uses the app's own /health endpoint.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: yb-travel-redis
+    restart: unless-stopped
+    # Enable AOF persistence so sessions survive a restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  redis-data:
+    driver: local

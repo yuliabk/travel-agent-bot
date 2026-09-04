@@ -2,11 +2,11 @@
 
 Meta Cloud API calls and the agent core are mocked; no network I/O happens.
 """
+
 import hashlib
 import hmac
 import json
 
-import pytest
 
 from src.core import config
 from src.core.agent import AgentResponse
@@ -41,6 +41,7 @@ def _text_message_payload(from_phone="972501112222", text="Plan a trip to Rome",
 
 
 # --- Webhook verification (GET) ---------------------------------------------
+
 
 def test_verify_webhook_success(client):
     resp = client.get(
@@ -80,6 +81,7 @@ def test_verify_webhook_wrong_mode_returns_403(client):
 
 
 # --- Inbound message (POST) --------------------------------------------------
+
 
 def test_receive_valid_message_dispatches_processing(client, monkeypatch):
     captured = {}
@@ -144,6 +146,7 @@ def test_receive_non_message_event_is_ignored(client, monkeypatch):
 
 # --- Signature helper --------------------------------------------------------
 
+
 def test_verify_signature_function():
     from src.channels.whatsapp import verify_signature
 
@@ -154,6 +157,7 @@ def test_verify_signature_function():
 
 
 # --- Background processing logic --------------------------------------------
+
 
 def test_process_interaction_sends_reply_and_pdf(monkeypatch, agent_response):
     import src.channels.whatsapp as wa
@@ -180,7 +184,8 @@ def test_process_interaction_empty_text_sends_fallback(monkeypatch):
     monkeypatch.setattr(wa, "mark_message_as_read", lambda mid: None)
     monkeypatch.setattr(wa, "send_whatsapp_text", lambda to, text: sent_texts.append((to, text)))
     monkeypatch.setattr(
-        wa.travel_agent, "handle_message",
+        wa.travel_agent,
+        "handle_message",
         lambda *a, **k: handle_called.__setitem__("count", handle_called["count"] + 1),
     )
 

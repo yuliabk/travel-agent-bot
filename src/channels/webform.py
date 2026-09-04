@@ -6,6 +6,7 @@ natural-language brief, runs it through the shared agent core, and returns a
 JSON response. When configured, it can also email the reply (with the PDF) back
 to the requester.
 """
+
 import base64
 from typing import Optional
 
@@ -70,9 +71,7 @@ def submit_webform(request: Request, req: WebFormRequest):
     brief = _build_brief(req)
     logger.info("Web form submission from %s (dest=%s)", user_id, req.tripDetails.destination)
 
-    result = travel_agent.handle_message(
-        CHANNEL, user_id, brief, context={"name": req.name, "email": req.email}
-    )
+    result = travel_agent.handle_message(CHANNEL, user_id, brief, context={"name": req.name, "email": req.email})
 
     pdf_b64 = None
     if result.pdf_bytes is not None:

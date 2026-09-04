@@ -9,6 +9,7 @@ Responsibilities:
 All heavy work runs in a FastAPI background task so the webhook returns 200
 immediately (Meta retries otherwise).
 """
+
 import hashlib
 import hmac
 import io
@@ -30,6 +31,7 @@ GRAPH_BASE = "https://graph.facebook.com/v20.0"
 
 
 # --- Outbound helpers ---------------------------------------------------
+
 
 def send_whatsapp_text(to_phone: str, text: str) -> None:
     if not text:
@@ -128,6 +130,7 @@ def upload_and_send_pdf(to_phone: str, pdf_bytes: io.BytesIO, filename: str, cap
 
 # --- Security -----------------------------------------------------------
 
+
 def verify_signature(raw_body: bytes, signature_header: str) -> bool:
     """Validate Meta's ``X-Hub-Signature-256`` header.
 
@@ -139,14 +142,13 @@ def verify_signature(raw_body: bytes, signature_header: str) -> bool:
         return True
     if not signature_header or not signature_header.startswith("sha256="):
         return False
-    expected = hmac.new(
-        config.WHATSAPP_APP_SECRET.encode("utf-8"), raw_body, hashlib.sha256
-    ).hexdigest()
+    expected = hmac.new(config.WHATSAPP_APP_SECRET.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     provided = signature_header.split("=", 1)[1]
     return hmac.compare_digest(expected, provided)
 
 
 # --- Background processing ---------------------------------------------
+
 
 def process_interaction(sender_phone: str, msg_type: str, msg_data: dict) -> None:
     try:
@@ -154,9 +156,7 @@ def process_interaction(sender_phone: str, msg_type: str, msg_data: dict) -> Non
         if msg_id:
             mark_message_as_read(msg_id)
 
-        raw_text = (
-            msg_data.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
-        )
+        raw_text = msg_data.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
 
         # Agent /resume command to release a human-takeover session.
         if sender_phone == config.AGENT_PHONE_NUMBER and raw_text.startswith("/resume"):
@@ -195,7 +195,7 @@ def process_interaction(sender_phone: str, msg_type: str, msg_data: dict) -> Non
             send_whatsapp_text(
                 config.AGENT_PHONE_NUMBER,
                 f"🚨 *התראת העברה לנציג אנושי!*\nלקוח: wa.me/{sender_phone}\n"
-                f"סיבה: {result.handoff_reason}\nהודעה: \"{user_text}\"\nלשחרור: /resume {sender_phone}",
+                f'סיבה: {result.handoff_reason}\nהודעה: "{user_text}"\nלשחרור: /resume {sender_phone}',
             )
 
         if result.text:
@@ -216,6 +216,7 @@ def process_interaction(sender_phone: str, msg_type: str, msg_data: dict) -> Non
 
 
 # --- Routes -------------------------------------------------------------
+
 
 @router.get("/webhook")
 def verify_webhook(

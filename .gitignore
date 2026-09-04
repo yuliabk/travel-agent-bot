@@ -13,3 +13,8 @@ venv/
 # Logs
 logs/
 *.log
+
+# Auto-generated doc exports
+DEPLOYMENT.docx
+DEPLOYMENT.pdf
+.abacus.donotdelete

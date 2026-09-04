@@ -1,13 +1,10 @@
 """Tests for the session manager (src/core/session.py)."""
-import time
-
-import pytest
 
 from src.core import session as session_mod
 from src.core.session import SessionManager, _MemoryBackend, _empty_session, _make_key
 
-
 # --- New session creation ----------------------------------------------------
+
 
 def test_get_returns_fresh_empty_session():
     mgr = SessionManager()
@@ -45,6 +42,7 @@ def test_make_key_format():
 
 # --- Save & retrieve ---------------------------------------------------------
 
+
 def test_save_and_reload_roundtrip():
     mgr = SessionManager()
     s = mgr.get("webform", "dana")
@@ -58,6 +56,7 @@ def test_save_and_reload_roundtrip():
 
 
 # --- History management ------------------------------------------------------
+
 
 def test_append_history_adds_entries():
     mgr = SessionManager()
@@ -88,6 +87,7 @@ def test_history_is_bounded_on_save(monkeypatch):
 
 # --- Delete ------------------------------------------------------------------
 
+
 def test_delete_removes_session():
     mgr = SessionManager()
     s = mgr.get("whatsapp", "gone")
@@ -98,6 +98,7 @@ def test_delete_removes_session():
 
 
 # --- TTL / expiry (memory backend) ------------------------------------------
+
 
 def test_memory_backend_expires_after_ttl(monkeypatch):
     backend = _MemoryBackend()
