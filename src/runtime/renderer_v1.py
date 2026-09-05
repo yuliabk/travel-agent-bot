@@ -1,5 +1,6 @@
 """Readable Hebrew output with explicitly scoped provider-based cost estimates."""
 from datetime import date
+from src.runtime.ground_transport_v1 import render_ground_transport
 from decimal import Decimal, InvalidOperation
 from src.contracts.travel_v1 import ProposalDraft, TripRequest
 
@@ -110,6 +111,7 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
             seen.add(key)
             lines += [f"**{flight.get('alternative_note') or 'חלופה'}**", flight_line(flight)]
         lines += ['עלות וזמן המעבר משדה חלופי למקום הלינה טרם אומתו ואינם כלולים במחיר הטיסה. יש לבדוק גם הגעה לשדה לטיסת החזרה.']
+    lines += [''] + render_ground_transport(request, proposal.flight_options)
     lines += ['', '## סיכום התקציב', '| רכיב | סכום ומצב |', '| --- | --- |']
     for index, (label, totals) in enumerate(segment_totals):
         costs = ' / '.join(money(total, currency) for currency, total in totals.items()) or 'חסר מחיר'
@@ -122,8 +124,8 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
     else:
         lines.append('| סך הלינה לכל הטיול | לא ניתן לחשב: חסר מחיר למקטע או שהמטבעות שונים |')
     lines += ['| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |',
-              '| מעברים בין מקומות הלינה ומשדה התעופה | טרם תומחרו |',
-              '| אוכל, תחבורה, אטרקציות וביטוח | טרם תומחרו |',
+              '| תחבורה ציבורית / רכב שכור / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; טרם תומחר |',
+              '| אוכל, אטרקציות וביטוח נסיעות | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',
               '**הסכום הידוע הוא ללינה בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
     lines += ['## מסעדות ומחירי אוכל', 'המחירים הבאים הם טווח או רמת מחיר שפורסמו במפות Google בזמן החיפוש, ולא מחיר מובטח לארוחה בתאריכי הטיול. יש לבדוק תפריט עדכני, כשרות ואלרגנים מול המסעדה.']
@@ -144,6 +146,8 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
         lines.append('## המסלול היומי והמפה')
         for day in proposal.daily_itinerary:
             lines += [f"### יום {day.get('day_number', '')}: {day.get('title', '')}", f"**מיקום ליום:** {day.get('location') or request.destination}", str(day.get('summary') or '')]
+            if day.get('transport_notes'):
+                lines += ['**איך מתניידים:** ' + str(day['transport_notes'])]
             lines += [f'- [[{place}]]' for place in day.get('suggested_places', []) or []]
             lines.append('')
     notes = list(dict.fromkeys(MESSAGES.get(item, item) for item in proposal.assumptions + proposal.warnings))
