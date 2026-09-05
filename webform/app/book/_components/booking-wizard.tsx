@@ -16,6 +16,8 @@ export interface FormData {
   phone: string
   origin: string
   destination: string
+  originAirport: string
+  destinationAirport: string
   dateFrom: string
   dateTo: string
   adults: number
@@ -35,6 +37,8 @@ const defaultForm: FormData = {
   phone: '',
   origin: '',
   destination: '',
+  originAirport: '',
+  destinationAirport: '',
   dateFrom: '',
   dateTo: '',
   adults: 2,
