@@ -2,17 +2,22 @@ import { canonicalDestination } from './airports'
 
 export const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 export function mapsUrl(place: string, destination: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place}, ${canonicalDestination(destination)}`)}`
+  const local = place.match(/\(([^()]*[A-Za-z][^()]*)\)/)?.[1]
+  const name = local || place.trim()
+  const suffix = local ? place.slice(place.lastIndexOf(')') + 1).trim() : ''
+  const query = suffix ? `${name}${suffix}` : name.includes(',') ? name : `${name}, ${canonicalDestination(destination)}`
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 export function itineraryDays(response: string) {
   const days: { label: string; places: string[]; destination?: string }[] = []
-  for (const line of response.split('\n')) {
-    if (/^###\s/.test(line)) days.push({ label: line.replace(/^###\s+/, ''), places: [] })
-    if (line.startsWith('**מיקום ליום:** ') && days.length) days.at(-1)!.destination = line.slice('**מיקום ליום:** '.length).trim()
-    for (const match of line.matchAll(/\[\[([^\]]+)\]\]/g)) {
-      if (!days.length) days.push({ label: 'מקומות בטיול', places: [] })
-      if (!days.at(-1)!.places.includes(match[1])) days.at(-1)!.places.push(match[1])
-    }
+  let current: typeof days[number] | undefined
+  for (const raw of response.split('\n')) {
+    const line = raw.trim()
+    if (/^###\s+יום\s+\d+/.test(line)) { current = { label: line.replace(/^###\s+/, ''), places: [] }; days.push(current) }
+    else if (/^#{1,3}\s/.test(line)) current = undefined
+    if (!current) continue
+    if (line.startsWith('**מיקום ליום:** ')) current.destination = line.slice('**מיקום ליום:** '.length).trim()
+    for (const match of line.matchAll(/\[\[([^\]]+)\]\]/g)) if (!current.places.includes(match[1].trim())) current.places.push(match[1].trim())
   }
   return days.filter(day => day.places.length)
 }
