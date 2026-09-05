@@ -119,3 +119,35 @@ def test_renderer_does_not_echo_customer_pii():
     assert "Private Customer" not in text
     assert "private@example.com" not in text
     assert "0501234567" not in text
+
+
+def test_enabled_search_requires_airports_before_calling_providers():
+    class MustNotCall:
+        def search_evidence(self, *args, **kwargs):
+            raise AssertionError("missing airports must stop search")
+        def generate_narrative(self, *args, **kwargs):
+            raise AssertionError("missing airports must stop planning")
+    for origin, destination, missing in (
+        (None, None, ["origin_iata", "destination_iata"]),
+        ("TLV", None, ["destination_iata"]),
+        (None, "FCO", ["origin_iata"]),
+    ):
+        result = run_web_draft_workflow(
+            payload(), completion(), origin_iata=origin, destination_iata=destination,
+            evidence_searcher=MustNotCall(), planner=MustNotCall(),
+        )
+        assert result.status == "NEEDS_INFORMATION"
+        assert result.missing_fields == missing
+        assert result.proposal is None
+
+
+def test_planner_failure_logs_reason_without_raw_error(caplog):
+    class BrokenPlanner:
+        def generate_narrative(self, *args):
+            raise RuntimeError("API key expired: SECRET_VALUE private@example.com")
+    result = run_web_draft_workflow(payload(), completion(), planner=BrokenPlanner(), model_version="test-model")
+    assert result.status == "PARTIAL_DRAFT"
+    assert "reason=api_key_expired" in caplog.text
+    assert "SECRET_VALUE" not in caplog.text
+    assert "private@example.com" not in caplog.text
+    assert "SECRET_VALUE" not in result.model_dump_json()
