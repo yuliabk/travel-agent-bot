@@ -66,6 +66,22 @@ async function main() {
     assert.equal(rejected.status, 422)
   }
   assert.equal(calls.length, 10, 'invalid airports must never call the backend')
+  assert.ok(airports.destinationSuggestions('wrocalw poland').includes('ורוצלב, פולין'))
+  assert.ok(airports.destinationSuggestions('ברצלנוה').includes('ברצלונה'))
+  assert.equal(airports.destinationMatch('ברצלנוה'), undefined, 'typos must not silently choose a city')
+  assert.equal(airports.destinationAirportCode('ורוצלב', 'WAW', true), 'WAW')
+  const stays = [{ destination: 'ורוצלב', checkIn: body.dateFrom, checkOut: '2026-10-11' }, { destination: 'קרקוב', checkIn: '2026-10-11', checkOut: body.dateTo }]
+  assert.equal((await submit({ ...body, destination: 'פולין', destinationAirport: 'WAW', landingAirportManual: true, stays, alternativeAirports: 'WRO, KRK' })).status, 200)
+  const multi = JSON.parse(calls.at(-1).options.body)
+  assert.equal(multi.destination_iata, 'WAW')
+  assert.equal(multi.stays[0].destination, 'Wroclaw, Poland')
+  assert.equal(multi.stays[1].destination, 'Krakow, Poland')
+  assert.equal(multi.stays[0].check_out, '2026-10-11')
+  assert.equal(multi.alternative_airports.join(','), 'WRO,KRK')
+  const beforeInvalid = calls.length
+  assert.equal((await submit({ ...body, stays: [{ ...stays[0], checkOut: body.dateTo }, stays[1]] })).status, 422)
+  assert.equal((await submit({ ...body, destination: 'ברצלנוה' })).status, 422)
+  assert.equal(calls.length, beforeInvalid)
   console.log('Submit regression tests passed')
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })
