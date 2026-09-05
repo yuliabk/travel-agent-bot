@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server'
+import { airportCode } from '@/lib/airports'
 
 const API_TIMEOUT_MS = 90_000
 
@@ -12,6 +13,8 @@ const missingFieldLabels: Record<string, string> = {
   child_ages: 'גילי הילדים',
   departure_date: 'תאריך יציאה',
   return_date: 'תאריך חזרה',
+  origin_iata: 'שדה המראה',
+  destination_iata: 'שדה נחיתה',
 }
 
 function apiBase(): string {
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
       phone = '',
       origin = '',
       destination = '',
+      originAirport = '',
+      destinationAirport = '',
       dateFrom = '',
       dateTo = '',
       adults = 1,
@@ -66,7 +71,15 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'יש להזין גיל עבור כל ילד.' }, { status: 400 })
     }
 
+    const originIata = airportCode(originAirport)
+    const destinationIata = airportCode(destinationAirport)
+    if (!originIata || !destinationIata || originIata === destinationIata) {
+      return Response.json({ error: 'בחרו שדות המראה ונחיתה שונים ותקינים בפרטי הטיול.' }, { status: 422 })
+    }
+
     const backendPayload = {
+      origin_iata: originIata,
+      destination_iata: destinationIata,
       payload: {
         name,
         email,
