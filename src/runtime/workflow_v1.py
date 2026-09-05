@@ -83,6 +83,15 @@ def run_web_draft_workflow(
             log_provider_failure("gemini", exc, request_id=request.request_id, model=model_version)
             workflow_warnings.append("Planner model failed; returning an evidence-only partial draft.")
 
+    if narrative is not None and evidence_searcher is not None:
+        enrich = getattr(evidence_searcher, "search_attraction_prices", None)
+        if callable(enrich):
+            try:
+                pack.records.extend(enrich(request, narrative))
+            except Exception as exc:
+                log_provider_failure("attraction_search", exc, request_id=request.request_id)
+                workflow_warnings.append("חיפוש מחירי האטרקציות לא הושלם. עלויות חסרות אינן אפס.")
+
     proposal = build_proposal_draft(
         request,
         pack,
