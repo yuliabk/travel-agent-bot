@@ -27,7 +27,7 @@ class PlannerDay(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     summary: str = Field(..., min_length=1, max_length=2000)
     suggested_places: List[str] = Field(default_factory=list)
-    location: str = Field(default="", max_length=200)
+    location: str = Field(default_factory=str, max_length=200)
 
 
 class PlannerNarrative(BaseModel):
