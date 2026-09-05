@@ -48,27 +48,31 @@ def evidence_for(req):
         amount=Decimal("500"),
         currency="USD",
         source_status=EvidenceSourceStatus.VERIFIED,
-        normalized_data={"stops": 0},
+        normalized_data={"stops": 0, "price_basis": "total_offer"},
     )
     return EvidencePack(request_id=req.request_id, records=[record]), record
 
 
 def test_contract_endpoint_reports_no_external_side_effects(monkeypatch):
     monkeypatch.delenv("V1_LIVE_SEARCH_ENABLED", raising=False)
+    monkeypatch.delenv("V1_MODEL_PLANNER_ENABLED", raising=False)
     with client() as c:
         response = c.get("/v1/contract")
     assert response.status_code == 200
     assert response.json()["schema_version"] == "1.0.0"
     assert response.json()["external_side_effects"] is False
     assert response.json()["live_search_enabled"] is False
+    assert response.json()["model_planner_enabled"] is False
 
 
-def test_contract_reports_live_search_feature_flag(monkeypatch):
+def test_contract_reports_feature_flags(monkeypatch):
     monkeypatch.setenv("V1_LIVE_SEARCH_ENABLED", "true")
+    monkeypatch.setenv("V1_MODEL_PLANNER_ENABLED", "true")
     with client() as c:
         response = c.get("/v1/contract")
     assert response.status_code == 200
     assert response.json()["live_search_enabled"] is True
+    assert response.json()["model_planner_enabled"] is True
 
 
 def test_abacus_normalize_returns_explicit_gaps():
@@ -103,6 +107,25 @@ def test_live_evidence_search_is_disabled_by_default(monkeypatch):
     with client() as c:
         response = c.post("/v1/evidence/search", json=body)
     assert response.status_code == 503
+
+
+def test_proposal_generation_returns_partial_evidence_draft_when_model_disabled(monkeypatch):
+    monkeypatch.delenv("V1_MODEL_PLANNER_ENABLED", raising=False)
+    req = trip_request()
+    pack, record = evidence_for(req)
+    body = {
+        "trip_request": req.model_dump(mode="json"),
+        "evidence_pack": pack.model_dump(mode="json"),
+    }
+    with client() as c:
+        response = c.post("/v1/proposals/generate", json=body)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["planner_used"] is False
+    assert result["proposal"]["status"] == "PARTIAL_DRAFT"
+    assert result["proposal"]["missing_information"] == ["itinerary_narrative"]
+    assert result["proposal"]["flight_options"][0]["amount"] == "500"
+    assert result["proposal"]["evidence_ids"] == [record.evidence_id]
 
 
 def test_approval_is_disabled_without_owner_token(monkeypatch):
