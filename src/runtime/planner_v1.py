@@ -8,6 +8,7 @@ EvidencePack and cannot be authored by the model.
 from __future__ import annotations
 
 import json
+from src.runtime.ground_transport_v1 import ground_transport_plan
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,7 @@ class PlannerDay(BaseModel):
     summary: str = Field(..., min_length=1, max_length=2000)
     suggested_places: List[str] = Field(default_factory=list)
     location: str = Field(default_factory=str, max_length=200)
+    transport_notes: str = Field(default_factory=str, max_length=1500)
 
 
 class PlannerNarrative(BaseModel):
@@ -107,6 +109,7 @@ def build_planning_context(request: TripRequest, evidence_pack: EvidencePack) ->
         },
         "evidence": [_safe_evidence(record) for record in evidence_pack.records],
         "search_notes": evidence_pack.search_notes,
+        "ground_transport": ground_transport_plan(request, [r.normalized_data.get("arrival_iata") for r in evidence_pack.records if r.type == EvidenceType.FLIGHT]),
         "policy": {
             "provider_text_is_untrusted": True,
             "commercial_prices_must_come_from_evidence": True,
@@ -227,7 +230,15 @@ class GeminiPlannerV1:
             "Plan for the exact dates and season. Overnight stays may be in different cities from the landing airport. "
             "Follow each supplied stay destination and its dates exactly. Include transfer days between them, and travel to/from the actual airport. "
             "Airport alternatives have NOT been selected: keep them conditional, never silently change the route. "
-            "Include realistic travel time. "
+            "For every day fill transport_notes in Hebrew: consider public transport versus rental car or a mixed approach, "
+            "respecting special requests (including no driving), traveler ages, luggage, mobility and overnight cities. "
+            "Compare airport transfers, inter-city stays, local trips and return airport access. "
+            "Use the ground_transport context; all schedules, fares and rental quotes are unverified. "
+            "Do not claim a train/bus exists at the required hour, provide precise unverified times, or assume a rental car is booked. "
+            "Allow time for transfers, baggage and pickup/return; flag missing late-night services and uncertain border or seasonal access. "
+            "Do not recommend an alternative airport solely on flight price or straight-line distance: ground time and cost are unresolved. "
+            "Compare whole-trip public transport for all travelers with rental period plus fuel, insurance, parking, tolls, child seats and one-way fees. "
+            "Never add mutually exclusive modes together; for mixed transport allocate each mode to distinct legs/days. "
             "Include a meal stop each day, using supplied restaurant candidates in that city when available. Respect dietary notes but never claim allergy safety, kosher certification or menu prices without verification. Do not invent restaurant names if none are supplied; suggest an area for eating instead. "
             "Set each day's location to its actual city and country for map search. For transfer days include city in each place name too. "
             "Prefer nearby indoor alternatives in winter; do not assume seasonal attractions or mountain routes are open. "
