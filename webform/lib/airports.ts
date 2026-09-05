@@ -13,6 +13,8 @@ export const airports = [
   ['CUN', 'קנקון'], ['BKK', 'בנגקוק'], ['HKT', 'פוקט'],
   ['LCA', 'לרנקה'], ['PFO', 'פאפוס'], ['VIE', 'וינה'], ['BUD', 'בודפשט'],
   ['WRO', 'ורוצלב — קופרניקוס'],
+  ['WAW', 'ורשה — שופן'], ['KRK', 'קרקוב'], ['POZ', 'פוזנן'], ['KTW', 'קטוביץ'],
+  ['BER', 'ברלין — ברנדנבורג'], ['CIA', 'רומא — צ׳יאמפינו'], ['BGY', 'ברגמו'], ['LIN', 'מילאנו — לינאטה'], ['STN', 'לונדון — סטנסטד'],
 ] as const
 
 export function airportCode(value: unknown): string | null {
@@ -25,6 +27,11 @@ export function airportCode(value: unknown): string | null {
 
 type Destination = { names: string[]; codes: string[]; automatic: boolean; countries?: string[] }
 const destinations: Destination[] = [
+  { names: ['קרקוב', 'קראקוב', 'krakow', 'cracow'], countries: ['פולין', 'poland'], codes: ['KRK'], automatic: true },
+  { names: ['ורשה', 'וורשה', 'warsaw', 'warszawa'], countries: ['פולין', 'poland'], codes: ['WAW'], automatic: true },
+  { names: ['פוזנן', 'פוזנאן', 'poznan'], countries: ['פולין', 'poland'], codes: ['POZ'], automatic: true },
+  { names: ['קטוביץ', 'קטוביצה', 'katowice'], countries: ['פולין', 'poland'], codes: ['KTW'], automatic: true },
+  { names: ['ברלין', 'berlin'], countries: ['גרמניה', 'germany'], codes: ['BER'], automatic: true },
   { names: ['ורוצלב', 'וורוצלב', 'ורוצלאב', 'וורוצלאב', 'וורצלוב', 'ורצלוב', 'ורוצלוב', 'וורוצלוב', 'וורצלב', 'wroclaw', 'breslau'], countries: ['פולין', 'poland', 'polska'], codes: ['WRO'], automatic: true },
   { names: ['רומא', 'rome', 'roma'], codes: ['FCO'], automatic: true },
   { names: ['פריז', 'paris'], codes: ['CDG', 'ORY'], automatic: true },
@@ -72,9 +79,10 @@ export function destinationMatch(value: unknown): Destination | undefined {
   ))
 }
 
-export function destinationAirportCode(destination: unknown, selected?: unknown): string | null {
+export function destinationAirportCode(destination: unknown, selected?: unknown, manual = false): string | null {
   const match = destinationMatch(destination)
   const explicit = airportCode(selected)
+  if (manual) return explicit
   if (!match) return explicit
   if (explicit && match.codes.includes(explicit)) return explicit
   return match.automatic ? match.codes[0] : null
@@ -90,6 +98,7 @@ export function canonicalDestination(value: string): string {
   const match = destinationMatch(value)
   if (!match?.automatic) return value.trim()
   const cities: Record<string, string> = {
+    KRK: 'Krakow, Poland', WAW: 'Warsaw, Poland', POZ: 'Poznan, Poland', KTW: 'Katowice, Poland', BER: 'Berlin, Germany',
     WRO: 'Wroclaw, Poland', FCO: 'Rome, Italy', CDG: 'Paris, France',
     LHR: 'London, United Kingdom', JFK: 'New York, USA', HND: 'Tokyo, Japan',
     ATH: 'Athens, Greece', JTR: 'Santorini, Greece', HER: 'Heraklion, Greece',
@@ -101,4 +110,26 @@ export function canonicalDestination(value: string): string {
     TLV: 'Tel Aviv, Israel', ETM: 'Eilat, Israel',
   }
   return cities[match.codes[0]] ?? value.trim()
+}
+
+function editDistance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i++) rows[i][0] = i
+  for (let j = 0; j <= b.length; j++) rows[0][j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1)
+  }
+  return rows[a.length][b.length]
+}
+
+// Fuzzy matches are suggestions requiring selection, never silent replacements.
+export function destinationSuggestions(value: string): string[] {
+  const input = normalizeDestination(value).slice(0, 200)
+  if (input.length < 3 || destinationMatch(value)) return []
+  return destinations.filter(d => d.automatic).map(d => {
+    const aliases = d.names.flatMap(name => [name, ...(d.countries ?? []).flatMap(country => [`${name} ${country}`, `${country} ${name}`])])
+    const distance = Math.min(...aliases.map(name => editDistance(input, name)))
+    return { label: d.countries?.length ? `${d.names[0]}, ${d.countries[0]}` : d.names[0], distance }
+  }).filter(item => item.distance <= (input.length >= 8 ? 2 : 1)).sort((a, b) => a.distance - b.distance).slice(0, 3).map(item => item.label)
 }
