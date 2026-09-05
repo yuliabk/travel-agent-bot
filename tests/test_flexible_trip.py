@@ -73,3 +73,10 @@ def test_price_above_whole_budget_triggers_fallback():
     session.get.side_effect = get
     pack = SerpApiClientV1('fixture', session=session).search_evidence(req, origin_iata='TLV', destination_iata='FCO')
     assert any(r.normalized_data.get('alternative') and r.normalized_data.get('arrival_iata') == 'CIA' for r in pack.records)
+
+def test_daily_location_schema_is_accepted_by_deployed_gemini_sdk():
+    from google import genai
+    from google.genai import _transformers
+    client = genai.Client(api_key='fixture-not-used-for-network')
+    schema = _transformers.t_schema(client._api_client, PlannerNarrative)
+    assert 'location' in schema.properties['days'].items.properties
