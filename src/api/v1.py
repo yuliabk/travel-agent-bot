@@ -1,8 +1,7 @@
 """Contract v1 API surface.
 
-These endpoints are deliberately side-effect free: no provider calls, booking,
-payment, email, WhatsApp or database mutation. Approval is fail-closed unless
-an owner approval token is configured in the runtime environment.
+Mutation and delivery actions remain fail-closed. Read-only provider search is
+also disabled by default and requires an explicit runtime feature flag.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from src.contracts.travel_v1 import (
     TripRequest,
     create_approval,
 )
+from src.core import config
 from src.governance.audit_v1 import build_audit_bundle
 from src.governance.evals_v1 import evaluate_proposal
 from src.intake.abacus_webform_v1 import (
@@ -30,14 +30,20 @@ from src.intake.abacus_webform_v1 import (
     CanonicalCompletion,
     migrate_abacus_payload,
 )
+from src.providers.serpapi_client_v1 import SerpApiClientV1
 
 router = APIRouter(prefix="/v1", tags=["contract-v1"])
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 class ContractInfo(BaseModel):
     schema_version: Literal["1.0.0"] = "1.0.0"
     external_side_effects: bool = False
     approval_auth: str = "bearer-owner-token"
+    live_search_enabled: bool = False
 
 
 class NormalizeAbacusRequest(BaseModel):
@@ -50,6 +56,16 @@ class NormalizeAbacusResponse(BaseModel):
     trip_request: Optional[TripRequest] = None
     missing_fields: List[str] = Field(default_factory=list)
     legacy_budget_label: Optional[str] = None
+
+
+class EvidenceSearchRequest(BaseModel):
+    trip_request: TripRequest
+    origin_iata: str = Field(..., min_length=3, max_length=3)
+    destination_iata: str = Field(..., min_length=3, max_length=3)
+
+
+class EvidenceSearchResponse(BaseModel):
+    evidence_pack: EvidencePack
 
 
 class EvaluateProposalRequest(BaseModel):
@@ -90,7 +106,7 @@ def _require_agent_identity(authorization: Optional[str], agent_id: Optional[str
 
 @router.get("/contract", response_model=ContractInfo)
 def contract_info() -> ContractInfo:
-    return ContractInfo()
+    return ContractInfo(live_search_enabled=_env_enabled("V1_LIVE_SEARCH_ENABLED"))
 
 
 @router.post("/intake/abacus/normalize", response_model=NormalizeAbacusResponse)
@@ -107,6 +123,26 @@ def normalize_abacus(req: NormalizeAbacusRequest) -> NormalizeAbacusResponse:
         trip_request=result.canonical_request,
         legacy_budget_label=result.legacy_budget_label,
     )
+
+
+@router.post("/evidence/search", response_model=EvidenceSearchResponse)
+def search_evidence(req: EvidenceSearchRequest) -> EvidenceSearchResponse:
+    if not _env_enabled("V1_LIVE_SEARCH_ENABLED"):
+        raise HTTPException(status_code=503, detail="Contract v1 live search is disabled")
+    if not config.SERPAPI_KEY:
+        raise HTTPException(status_code=503, detail="SERPAPI_API_KEY is not configured")
+
+    try:
+        pack = SerpApiClientV1(config.SERPAPI_KEY).search_evidence(
+            req.trip_request,
+            origin_iata=req.origin_iata,
+            destination_iata=req.destination_iata,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="read-only provider search failed") from exc
+    return EvidenceSearchResponse(evidence_pack=pack)
 
 
 @router.post("/proposals/evaluate", response_model=EvalResult)
