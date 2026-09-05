@@ -2,6 +2,7 @@
 
 import { FormData } from './booking-wizard'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -55,6 +56,7 @@ export function StepTrip({ form, updateForm, onNext, onBack }: Props) {
   return <div className="space-y-6">
     <div className="text-center mb-2"><h2 className="font-display text-xl font-semibold">פרטי הטיול</h2><p className="text-sm text-muted-foreground">מאיפה יוצאים ולאן נוסעים?</p></div>
     <div className="space-y-4">
+      <div className="rounded-lg border border-primary/30 bg-primary/5 p-4"><Label htmlFor="trip-special-requests" className="font-semibold mb-2 block">בקשות מיוחדות והעדפות אוכל</Label><Textarea id="trip-special-requests" value={form.specialRequests ?? ''} onChange={e => updateForm({ specialRequests: e.target.value })} maxLength={4000} rows={4} placeholder="למשל: טיסה ישירה בלבד, מסעדות צמחוניות, כשרות, אלרגיות, נגישות, קצב רגוע או אירוע מיוחד" /><p className="text-xs text-muted-foreground mt-2">הבקשות נשמרות ומועברות לתכנון המסלול. אפשר לערוך אותן גם בשלב ההעדפות.</p></div>
       <datalist id="airport-options">{airports.map(([code, label]) => <option key={code} value={`${label} (${code})`} />)}</datalist>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {([['originAirport', 'שדה המראה']] as const).map(([field, label]) => <div key={field}>
