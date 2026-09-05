@@ -21,6 +21,9 @@ assert.equal(days.length, 1)
 assert.equal(days[0].places.length, 2)
 assert.ok(decodeURIComponent(format.mapsUrl('Rynek', 'פולין ,וורצלוב')).includes('Wroclaw, Poland'))
 assert.ok(new URL(format.routeUrl(days[0].places, 'ורוצלב')).searchParams.get('destination').includes('Hydropolis'))
+const multiCity = '### יום 1: עיר ראשונה\n**מיקום ליום:** ורוצלב, פולין\n- [[Rynek]]\n### יום 2: עיר שנייה\n**מיקום ליום:** קרקוב, פולין\n- [[Wawel]]'
+assert.equal(format.itineraryDays(multiCity)[1].destination, 'קרקוב, פולין')
+assert.ok(format.wordHtml(multiCity, 'פולין').includes(encodeURIComponent('Wawel, Krakow, Poland')))
 async function main() {
   let call
   const geo = load('lib/geocoding.ts', { require: () => airports, process: { env: { TRAVEL_AGENT_API_URL: 'https://backend.example', TRAVEL_AGENT_WEB_TOKEN: 'fixture' } }, fetch: async (url, options) => { call = { url, options }; return { ok: true, json: async () => ({ points: [{ name: 'Rynek', lat: 51.1, lng: 17.03 }, { name: 'Missing', lat: 999, lng: 17 }] }) } } })
@@ -33,3 +36,4 @@ async function main() {
   console.log('Customer display, Word, map links and proxy tests passed')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })
+
