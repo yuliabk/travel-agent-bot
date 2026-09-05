@@ -1,0 +1,177 @@
+export const dynamic = 'force-dynamic'
+
+import { NextRequest } from 'next/server'
+
+const API_TIMEOUT_MS = 90_000
+
+const missingFieldLabels: Record<string, string> = {
+  origin: 'מוצא',
+  budget: 'תקציב',
+  currency: 'מטבע',
+  consent_status: 'אישור פרטיות',
+  child_ages: 'גילי הילדים',
+  departure_date: 'תאריך יציאה',
+  return_date: 'תאריך חזרה',
+}
+
+function apiBase(): string {
+  return (process.env.TRAVEL_AGENT_API_URL ?? '').replace(/\/$/, '')
+}
+
+export async function POST(request: NextRequest) {
+  const base = apiBase()
+  const token = process.env.TRAVEL_AGENT_WEB_TOKEN ?? ''
+  if (!base || !token) {
+    return Response.json(
+      { error: 'שירות תכנון הטיולים עדיין אינו מופעל בסביבה זו.' },
+      { status: 503 }
+    )
+  }
+
+  try {
+    const body = await request.json()
+    const {
+      name = '',
+      email = '',
+      phone = '',
+      origin = '',
+      destination = '',
+      dateFrom = '',
+      dateTo = '',
+      adults = 1,
+      children = 0,
+      childAges = [],
+      budgetAmount = '',
+      currency = 'ILS',
+      flightStops = 'any',
+      travelStyles = [],
+      specialRequests = '',
+      consent = false,
+    } = body ?? {}
+
+    if (!name || !email || !origin || !destination || !dateFrom || !dateTo) {
+      return Response.json({ error: 'שדות חובה חסרים' }, { status: 400 })
+    }
+    if (!consent) {
+      return Response.json({ error: 'יש לאשר את תנאי הפרטיות לפני יצירת הטיוטה.' }, { status: 400 })
+    }
+    const numericBudget = Number(budgetAmount)
+    if (!Number.isFinite(numericBudget) || numericBudget <= 0) {
+      return Response.json({ error: 'יש להזין תקציב מספרי תקין.' }, { status: 400 })
+    }
+    const normalizedAges = Array.isArray(childAges)
+      ? childAges.map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v >= 0 && v <= 17)
+      : []
+    if (Number(children) > 0 && normalizedAges.length !== Number(children)) {
+      return Response.json({ error: 'יש להזין גיל עבור כל ילד.' }, { status: 400 })
+    }
+
+    const backendPayload = {
+      payload: {
+        name,
+        email,
+        phone: phone || null,
+        destination,
+        dateFrom,
+        dateTo,
+        adults: Number(adults) || 1,
+        children: Number(children) || 0,
+        budget: `${numericBudget} ${currency}`,
+        flightStops,
+        travelStyles: Array.isArray(travelStyles) ? travelStyles : [],
+        specialRequests: specialRequests || null,
+      },
+      completion: {
+        origin,
+        budget_amount: numericBudget,
+        currency,
+        consent_status: 'granted',
+        child_ages: normalizedAges,
+      },
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(`${base}/v1/web/draft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(backendPayload),
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+
+    let data: any = null
+    try {
+      data = await response.json()
+    } catch {
+      data = null
+    }
+
+    if (!response.ok) {
+      const detail = typeof data?.detail === 'string' ? data.detail : ''
+      const message = response.status === 503
+        ? 'שירות הטיוטות עדיין לא הופעל. נסו שוב לאחר הפעלת סביבת ה-Web המאובטחת.'
+        : detail || 'שגיאה ביצירת טיוטת הטיול. נסו שוב.'
+      return Response.json({ error: message }, { status: response.status })
+    }
+
+    if (data?.status === 'NEEDS_INFORMATION') {
+      const fields = Array.isArray(data?.missing_fields) ? data.missing_fields : []
+      const readable = fields.map((f: string) => missingFieldLabels[f] ?? f).join(', ')
+      return Response.json(
+        { error: readable ? `חסרים פרטים: ${readable}` : 'חסרים פרטים להשלמת הבקשה.' },
+        { status: 422 }
+      )
+    }
+
+    const result = String(data?.rendered_draft ?? '').trim()
+    if (!result) {
+      return Response.json({ error: 'לא התקבלה טיוטה מהמערכת.' }, { status: 502 })
+    }
+
+    // Keep the existing SSE shape so the current UX does not need to change.
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ status: 'processing' })}\n\n`))
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              status: 'completed',
+              result,
+              proposalStatus: data?.status ?? 'PARTIAL_DRAFT',
+              proposalId: data?.proposal?.proposal_id ?? null,
+              proposalVersion: data?.proposal?.version ?? null,
+            })}\n\n`
+          )
+        )
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Connection: 'keep-alive',
+      },
+    })
+  } catch (error: any) {
+    console.error('submit proxy error:', error)
+    const timedOut = error?.name === 'AbortError'
+    return Response.json(
+      { error: timedOut ? 'הבקשה ארכה זמן רב מדי. נסו שוב.' : 'אירעה שגיאה זמנית. נסו שוב.' },
+      { status: timedOut ? 504 : 500 }
+    )
+  }
+}
