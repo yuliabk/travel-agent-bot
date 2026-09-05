@@ -45,7 +45,7 @@ def test_round_trip_params_and_pii_minimization():
     client = SerpApiClientV1("test-key", session=session)
     pack = client.search_evidence(req, origin_iata="TLV", destination_iata="FCO")
     assert pack.request_id == req.request_id
-    assert session.get.call_count == 5  # original flight + hotel + two alternatives + restaurants
+    assert session.get.call_count == 7  # original + hotel + relaxed stops + 3 nearby airports + restaurants
     flight_call = session.get.call_args_list[0]
     assert flight_call.args[0] == SERPAPI_URL
     params = flight_call.kwargs["params"]
