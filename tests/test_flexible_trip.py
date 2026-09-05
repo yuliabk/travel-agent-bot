@@ -80,3 +80,33 @@ def test_daily_location_schema_is_accepted_by_deployed_gemini_sdk():
     client = genai.Client(api_key='fixture-not-used-for-network')
     schema = _transformers.t_schema(client._api_client, PlannerNarrative)
     assert 'location' in schema.properties['days'].items.properties
+
+def test_provider_429_stops_fallbacks_and_reports_incomplete_search():
+    req = request(); session = MagicMock()
+    limited = fake_response({'error': 'Your account has run out of searches'})
+    limited.status_code = 429
+    session.get.return_value = limited
+    pack = SerpApiClientV1('fixture', session=session).search_evidence(req, origin_iata='TLV', destination_iata='WRO')
+    assert any('(429)' in note for note in pack.search_notes)
+    assert not any(call.kwargs['params'].get('arrival_id') == 'KRK' for call in session.get.call_args_list)
+    proposal = build_proposal_draft(req, pack, narrative=None, model_version='fixture')
+    proposal.warnings.extend(pack.search_notes)
+    text = render_ai_draft_hebrew(req, proposal)
+    assert 'זו אינה הודעה שאין טיסות' in text
+
+
+def test_restaurants_keep_source_price_labels_without_fabricated_totals():
+    req = request(); session = MagicMock()
+    def get(url, *, params, timeout):
+        if params['engine'] == 'google_maps':
+            return fake_response({'local_results': [{'title':'Fixture Bistro','price':'40–60 zł','address':'City center','place_id':'fixture-place'}]})
+        if params['engine'] == 'google_hotels': return fake_response({'properties': []})
+        return fake_response({'search_metadata': {'id':'f'},'best_flights':[{'price':100,'flights':[]}]})
+    session.get.side_effect = get
+    pack = SerpApiClientV1('fixture',session=session).search_evidence(req,origin_iata='TLV',destination_iata='FCO')
+    proposal = build_proposal_draft(req,pack,narrative=None,model_version='fixture')
+    assert proposal.restaurant_options[0]['price_label'] == '40–60 zł'
+    assert proposal.estimated_total == []
+    text = render_ai_draft_hebrew(req,proposal)
+    assert 'Fixture Bistro' in text and '40–60 zł' in text
+    assert 'לא מחיר מובטח' in text
