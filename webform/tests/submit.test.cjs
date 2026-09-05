@@ -37,12 +37,24 @@ async function main() {
   assert.equal(backend.destination_iata, 'FCO')
   assert.equal(backend.completion.origin, 'Tel Aviv')
   assert.equal(backend.payload.destination, 'Rome')
+  const automatic = await submit({ ...body, destinationAirport: '' })
+  assert.equal(automatic.status, 200)
+  assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'FCO')
+  const changedDestination = await submit({ ...body, destination: 'פריז' })
+  assert.equal(changedDestination.status, 200)
+  assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'CDG', 'stale Rome airport must not survive a destination change')
+  const alternative = await submit({ ...body, destination: 'Paris', destinationAirport: 'ORY' })
+  assert.equal(alternative.status, 200)
+  assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'ORY')
+  assert.equal(airports.destinationAirportCode('  ROME  '), 'FCO')
+  assert.equal(airports.destinationAirportCode('יוון'), null)
+  assert.equal(airports.destinationAirportCode('יוון', 'JTR'), 'JTR')
+  assert.equal(airports.destinationAirportCode('Paris, Texas'), null)
   for (const destinationAirport of ['', 'יוון', 'TLV', '123']) {
-    const rejected = await submit({ ...body, destinationAirport })
+    const rejected = await submit({ ...body, destination: 'Unknown destination', destinationAirport })
     assert.equal(rejected.status, 422)
   }
-  assert.equal(calls.length, 1, 'invalid airports must never call the backend')
+  assert.equal(calls.length, 4, 'invalid airports must never call the backend')
   console.log('Submit regression tests passed')
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })
-
