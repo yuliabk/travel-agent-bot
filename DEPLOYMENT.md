@@ -21,7 +21,7 @@
 | משתנה | חובה? | תיאור |
 |-------|-------|-------|
 | `GEMINI_API_KEY` | ✅ חובה | מפתח Google Gemini (מנוע ה-AI) |
-| `GEMINI_MODEL` | אופ׳ | ברירת מחדל: `gemini-2.5-flash` |
+| `GEMINI_MODEL` | אופ׳ | ברירת מחדל: `gemini-3.5-flash` |
 | `SERPAPI_API_KEY` | אופ׳ | חיפוש טיסות/מלונות (אם ריק — מדלגים) |
 | `DEFAULT_ORIGIN_IATA` | אופ׳ | קוד שדה מוצא, ברירת מחדל `TLV` |
 | `REDIS_URL` | מומלץ | כתובת Redis; אם ריק — נעשה שימוש בזיכרון מקומי |
