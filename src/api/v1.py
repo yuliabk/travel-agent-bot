@@ -1,7 +1,7 @@
 """Contract v1 API surface.
 
-Mutation and delivery actions remain fail-closed. Read-only provider search is
-also disabled by default and requires an explicit runtime feature flag.
+Mutation and delivery actions remain fail-closed. Read-only provider search and
+model planning are independently gated runtime capabilities.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from src.intake.abacus_webform_v1 import (
     migrate_abacus_payload,
 )
 from src.providers.serpapi_client_v1 import SerpApiClientV1
+from src.runtime.planner_v1 import GeminiPlannerV1, build_proposal_draft
 
 router = APIRouter(prefix="/v1", tags=["contract-v1"])
 
@@ -44,6 +45,7 @@ class ContractInfo(BaseModel):
     external_side_effects: bool = False
     approval_auth: str = "bearer-owner-token"
     live_search_enabled: bool = False
+    model_planner_enabled: bool = False
 
 
 class NormalizeAbacusRequest(BaseModel):
@@ -66,6 +68,16 @@ class EvidenceSearchRequest(BaseModel):
 
 class EvidenceSearchResponse(BaseModel):
     evidence_pack: EvidencePack
+
+
+class GenerateProposalRequest(BaseModel):
+    trip_request: TripRequest
+    evidence_pack: EvidencePack
+
+
+class GenerateProposalResponse(BaseModel):
+    proposal: ProposalDraft
+    planner_used: bool
 
 
 class EvaluateProposalRequest(BaseModel):
@@ -106,7 +118,10 @@ def _require_agent_identity(authorization: Optional[str], agent_id: Optional[str
 
 @router.get("/contract", response_model=ContractInfo)
 def contract_info() -> ContractInfo:
-    return ContractInfo(live_search_enabled=_env_enabled("V1_LIVE_SEARCH_ENABLED"))
+    return ContractInfo(
+        live_search_enabled=_env_enabled("V1_LIVE_SEARCH_ENABLED"),
+        model_planner_enabled=_env_enabled("V1_MODEL_PLANNER_ENABLED"),
+    )
 
 
 @router.post("/intake/abacus/normalize", response_model=NormalizeAbacusResponse)
@@ -143,6 +158,45 @@ def search_evidence(req: EvidenceSearchRequest) -> EvidenceSearchResponse:
     except Exception as exc:
         raise HTTPException(status_code=502, detail="read-only provider search failed") from exc
     return EvidenceSearchResponse(evidence_pack=pack)
+
+
+@router.post("/proposals/generate", response_model=GenerateProposalResponse)
+def generate_proposal(req: GenerateProposalRequest) -> GenerateProposalResponse:
+    planner_enabled = _env_enabled("V1_MODEL_PLANNER_ENABLED")
+    narrative = None
+    model_version = "planner-disabled"
+
+    if planner_enabled:
+        if not config.GEMINI_API_KEY:
+            raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured for Contract v1 planner")
+        try:
+            from google import genai
+
+            planner = GeminiPlannerV1(genai.Client(api_key=config.GEMINI_API_KEY), config.GEMINI_MODEL)
+            narrative = planner.generate_narrative(req.trip_request, req.evidence_pack)
+            model_version = config.GEMINI_MODEL
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception:
+            proposal = build_proposal_draft(
+                req.trip_request,
+                req.evidence_pack,
+                narrative=None,
+                model_version=config.GEMINI_MODEL,
+            )
+            proposal.warnings.append("Planner model failed; returning partial evidence-only draft.")
+            return GenerateProposalResponse(proposal=proposal, planner_used=False)
+
+    try:
+        proposal = build_proposal_draft(
+            req.trip_request,
+            req.evidence_pack,
+            narrative=narrative,
+            model_version=model_version,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return GenerateProposalResponse(proposal=proposal, planner_used=narrative is not None)
 
 
 @router.post("/proposals/evaluate", response_model=EvalResult)
