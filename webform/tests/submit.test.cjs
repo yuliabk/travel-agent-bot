@@ -36,7 +36,7 @@ async function main() {
   assert.equal(backend.origin_iata, 'TLV')
   assert.equal(backend.destination_iata, 'FCO')
   assert.equal(backend.completion.origin, 'Tel Aviv')
-  assert.equal(backend.payload.destination, 'Rome')
+  assert.equal(backend.payload.destination, 'Rome, Italy')
   const automatic = await submit({ ...body, destinationAirport: '' })
   assert.equal(automatic.status, 200)
   assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'FCO')
@@ -56,6 +56,8 @@ async function main() {
     assert.equal(resolved.status, 200)
     assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'WRO')
   }
+  assert.equal(airports.canonicalDestination('פולין ,וורצלוב'), 'Wroclaw, Poland')
+  assert.equal(airports.canonicalDestination('Paris, Texas'), 'Paris, Texas')
   assert.equal(airports.destinationAirportCode('פולין'), null)
   assert.equal(airports.destinationAirportCode('Wroclaw Germany'), null)
   assert.equal(airports.destinationAirportCode('וורצלוב פולין', 'FCO'), 'WRO')
