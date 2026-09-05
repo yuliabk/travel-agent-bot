@@ -50,11 +50,20 @@ async function main() {
   assert.equal(airports.destinationAirportCode('יוון'), null)
   assert.equal(airports.destinationAirportCode('יוון', 'JTR'), 'JTR')
   assert.equal(airports.destinationAirportCode('Paris, Texas'), null)
+  for (const destination of ['וורצלוב פולין', 'ורוצלב', 'וורוצלב, פולין', 'Wrocław, Poland', '  WROCLAW (POLAND)  ', 'פולין — ורוצלב']) {
+    assert.equal(airports.destinationAirportCode(destination), 'WRO', destination)
+    const resolved = await submit({ ...body, destination, destinationAirport: '' })
+    assert.equal(resolved.status, 200)
+    assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'WRO')
+  }
+  assert.equal(airports.destinationAirportCode('פולין'), null)
+  assert.equal(airports.destinationAirportCode('Wroclaw Germany'), null)
+  assert.equal(airports.destinationAirportCode('וורצלוב פולין', 'FCO'), 'WRO')
   for (const destinationAirport of ['', 'יוון', 'TLV', '123']) {
     const rejected = await submit({ ...body, destination: 'Unknown destination', destinationAirport })
     assert.equal(rejected.status, 422)
   }
-  assert.equal(calls.length, 4, 'invalid airports must never call the backend')
+  assert.equal(calls.length, 10, 'invalid airports must never call the backend')
   console.log('Submit regression tests passed')
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })
