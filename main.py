@@ -9,6 +9,7 @@ Channels:
 * WhatsApp  -> ``GET/POST /webhook``          (Meta Cloud API)
 * Web Form  -> ``POST /api/webform``          (structured JSON)
 * Email     -> IMAP polling + SMTP (background thread, no HTTP route)
+* Contract  -> ``/v1/*``                      (side-effect-free governance API)
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from src.core.rate_limit import limiter
 from src.core.session import session_manager
 from src.channels import whatsapp, webform
 from src.channels.email import email_poller
+from src.api import v1
 
 logger = get_logger("main")
 
@@ -39,6 +41,7 @@ app.add_middleware(SlowAPIMiddleware)
 # --- Channel routers ---
 app.include_router(whatsapp.router)
 app.include_router(webform.router)
+app.include_router(v1.router)
 
 
 # --- Background: session cleanup (in-memory backend housekeeping) ---
@@ -78,6 +81,7 @@ def root():
             "whatsapp": True,
             "webform": True,
             "email": config.EMAIL_ENABLED,
+            "contract_v1": True,
         },
     }
 
