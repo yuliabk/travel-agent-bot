@@ -28,6 +28,7 @@ from src.governance.evals_v1 import evaluate_proposal
 from src.intake.abacus_webform_v1 import AbacusWebFormPayload, CanonicalCompletion, migrate_abacus_payload
 from src.providers.serpapi_client_v1 import SerpApiClientV1
 from src.runtime.planner_v1 import GeminiPlannerV1, build_proposal_draft
+from src.runtime.provider_diagnostics import log_provider_failure
 from src.runtime.workflow_v1 import WebDraftWorkflowResult, run_web_draft_workflow
 
 router = APIRouter(prefix="/v1", tags=["contract-v1"])
@@ -150,7 +151,8 @@ def normalize_abacus(req: NormalizeAbacusRequest) -> NormalizeAbacusResponse:
 def web_draft(req: WebDraftRequest) -> WebDraftWorkflowResult:
     try:
         planner = _model_planner()
-    except Exception:
+    except Exception as exc:
+        log_provider_failure("gemini_init", exc, model=config.GEMINI_MODEL)
         planner = None
     return run_web_draft_workflow(
         req.payload,
@@ -194,8 +196,10 @@ def generate_proposal(req: GenerateProposalRequest) -> GenerateProposalResponse:
             narrative = planner.generate_narrative(req.trip_request, req.evidence_pack)
             model_version = config.GEMINI_MODEL
         except ValueError as exc:
+            log_provider_failure("gemini", exc, request_id=req.trip_request.request_id, model=config.GEMINI_MODEL)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except Exception:
+        except Exception as exc:
+            log_provider_failure("gemini", exc, request_id=req.trip_request.request_id, model=config.GEMINI_MODEL)
             proposal = build_proposal_draft(req.trip_request, req.evidence_pack, narrative=None, model_version=config.GEMINI_MODEL)
             proposal.warnings.append("Planner model failed; returning partial evidence-only draft.")
             return GenerateProposalResponse(proposal=proposal, planner_used=False)
