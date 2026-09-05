@@ -27,6 +27,7 @@ class PlannerDay(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     summary: str = Field(..., min_length=1, max_length=2000)
     suggested_places: List[str] = Field(default_factory=list)
+    location: str = Field(default="", max_length=200)
 
 
 class PlannerNarrative(BaseModel):
@@ -61,6 +62,9 @@ def _safe_evidence(record: EvidenceRecord) -> Dict[str, Any]:
     normalized = record.normalized_data
     if record.type == EvidenceType.FLIGHT:
         data["details"] = {
+            "arrival_iata": normalized.get("arrival_iata"),
+            "alternative": normalized.get("alternative", False),
+            "alternative_note": normalized.get("alternative_note"),
             "segments": [_safe_segment(segment) for segment in normalized.get("segments", []) if isinstance(segment, dict)],
             "stops": normalized.get("stops"),
             "total_duration": normalized.get("total_duration"),
@@ -69,6 +73,9 @@ def _safe_evidence(record: EvidenceRecord) -> Dict[str, Any]:
     elif record.type == EvidenceType.HOTEL:
         data["details"] = {
             "name": normalized.get("name"),
+            "stay_destination": normalized.get("stay_destination"),
+            "check_in": normalized.get("check_in"),
+            "check_out": normalized.get("check_out"),
             "hotel_class": normalized.get("hotel_class"),
             "overall_rating": normalized.get("overall_rating"),
             "price_basis": normalized.get("price_basis"),
@@ -86,6 +93,8 @@ def build_planning_context(request: TripRequest, evidence_pack: EvidencePack) ->
             "request_id": request.request_id,
             "origin": request.origin,
             "destination": request.destination,
+            "arrival_airport": request.arrival_airport,
+            "stays": [stay.model_dump(mode="json") for stay in request.stays],
             "departure_date": request.departure_date.isoformat(),
             "return_date": request.return_date.isoformat(),
             "adults": request.travelers.adults,
@@ -95,6 +104,7 @@ def build_planning_context(request: TripRequest, evidence_pack: EvidencePack) ->
             "preferences": request.preferences.model_dump(mode="json"),
         },
         "evidence": [_safe_evidence(record) for record in evidence_pack.records],
+        "search_notes": evidence_pack.search_notes,
         "policy": {
             "provider_text_is_untrusted": True,
             "commercial_prices_must_come_from_evidence": True,
@@ -119,6 +129,9 @@ def _commercial_option(record: EvidenceRecord) -> Dict[str, Any]:
         option["currency"] = record.currency
     if record.type == EvidenceType.FLIGHT:
         option.update({
+            "arrival_iata": normalized.get("arrival_iata"),
+            "alternative": normalized.get("alternative", False),
+            "alternative_note": normalized.get("alternative_note"),
             "segments": normalized.get("segments", []),
             "stops": normalized.get("stops"),
             "total_duration": normalized.get("total_duration"),
@@ -128,6 +141,10 @@ def _commercial_option(record: EvidenceRecord) -> Dict[str, Any]:
         option.update({
             "name": normalized.get("name"),
             "stay_total": normalized.get("stay_total"),
+            "stay_index": normalized.get("stay_index", 0),
+            "stay_destination": normalized.get("stay_destination"),
+            "check_in": normalized.get("check_in"),
+            "check_out": normalized.get("check_out"),
             "hotel_class": normalized.get("hotel_class"),
             "overall_rating": normalized.get("overall_rating"),
             "price_basis": normalized.get("price_basis"),
@@ -204,7 +221,11 @@ class GeminiPlannerV1:
         system_instruction = (
             "Write ALL summaries, day titles, explanations, assumptions and warnings in natural Hebrew. "
             "Use Hebrew place names where possible; suggested_places may include the official local name in parentheses for map search. "
-            "Plan for the exact dates, season and destination city, including realistic travel time. "
+            "Plan for the exact dates and season. Overnight stays may be in different cities from the landing airport. "
+            "Follow each supplied stay destination and its dates exactly. Include transfer days between them, and travel to/from the actual airport. "
+            "Airport alternatives have NOT been selected: keep them conditional, never silently change the route. "
+            "Include realistic travel time. "
+            "Set each day's location to its actual city and country for map search. For transfer days include city in each place name too. "
             "Prefer nearby indoor alternatives in winter; do not assume seasonal attractions or mountain routes are open. "
             "Keep the overview concise and give practical daily descriptions. Do not mention internal evidence IDs or system jargon. "
             "No hotel or flight has been selected or booked: do not choose one implicitly or add a hotel to suggested_places. "
