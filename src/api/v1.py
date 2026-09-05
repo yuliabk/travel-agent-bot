@@ -24,6 +24,7 @@ from src.contracts.travel_v1 import (
     EvidencePack,
     ProposalDraft,
     TripRequest,
+    StaySegment,
     create_approval,
 )
 from src.core import config
@@ -80,11 +81,38 @@ class WebDraftRequest(BaseModel):
     completion: Optional[CanonicalCompletion] = None
     origin_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
     destination_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    stays: List[StaySegment] = Field(default_factory=list, max_length=6)
+    alternative_airports: List[str] = Field(default_factory=list, max_length=3)
 
 
 class MapPointsRequest(BaseModel):
     destination: str = Field(default="", max_length=200)
     places: List[str] = Field(..., min_length=1, max_length=40)
+
+
+class DestinationLookupRequest(BaseModel):
+    query: str = Field(..., min_length=2, max_length=200)
+
+
+@router.post("/web/destinations")
+def destination_lookup(req: DestinationLookupRequest):
+    if not config.SERPAPI_KEY:
+        raise HTTPException(status_code=503, detail="שירות זיהוי היעדים אינו זמין כרגע")
+    try:
+        data = SerpApiClientV1(config.SERPAPI_KEY, timeout=10)._get({
+            "engine": "google_flights_autocomplete", "q": req.query.strip(),
+            "exclude_regions": "true", "hl": "iw", "api_key": config.SERPAPI_KEY,
+        })
+        suggestions = []
+        for item in (data.get("suggestions") or [])[:6]:
+            if item.get("type") != "city" or not item.get("name"):
+                continue
+            airports = [{"code": airport["id"], "name": str(airport.get("name") or airport["id"])} for airport in item.get("airports", []) if re.fullmatch(r"[A-Z]{3}", str(airport.get("id", "")))]
+            suggestions.append({"name": str(item["name"]), "description": str(item.get("description") or ""), "airports": airports})
+        return {"suggestions": suggestions}
+    except Exception as exc:
+        log_provider_failure("destination_lookup", exc)
+        raise HTTPException(status_code=502, detail="זיהוי היעד נכשל. נסו שם עיר באנגלית עם שם המדינה.") from exc
 
 
 @router.post("/web/map-points")
@@ -204,6 +232,8 @@ def web_draft(req: WebDraftRequest) -> WebDraftWorkflowResult:
         evidence_searcher=_evidence_searcher(),
         planner=planner,
         model_version=config.GEMINI_MODEL if planner is not None else "planner-disabled",
+        stays=req.stays,
+        alternative_airports=req.alternative_airports,
     )
 
 
