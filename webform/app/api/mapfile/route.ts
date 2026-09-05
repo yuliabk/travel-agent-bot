@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { geocodePlaces, buildKml, buildKmlByDays, GeoPoint, DayPoints } from '@/lib/geocoding'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 interface DayInput { label: string; places: string[] }
 
@@ -29,9 +30,9 @@ export async function POST(request: NextRequest) {
       if (!dayPoints.length) return new Response(JSON.stringify({ error: 'לא ניתן היה לאתר את נקודות הציון על המפה' }), { status: 422, headers: { 'Content-Type': 'application/json' } })
       count = dayPoints.reduce((n, d) => n + d.points.length, 0); kml = buildKmlByDays(dayPoints, mapName)
     } else { kml = buildKml(points, mapName) }
-    return new Response(kml, { status: 200, headers: { 'Content-Type': 'application/vnd.google-earth.kml+xml; charset=utf-8', 'X-Points-Count': String(count) } })
+    return new Response(kml, { status: 200, headers: { 'Content-Type': 'application/vnd.google-earth.kml+xml; charset=utf-8', 'X-Points-Count': String(count), 'X-Missing-Points': String(new Set(allPlaces).size - points.length) } })
   } catch (e) {
-    console.error('mapfile route error:', e)
+    console.error('mapfile service failed')
     return new Response(JSON.stringify({ error: 'אירעה שגיאה ביצירת קובץ המפה' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 }
