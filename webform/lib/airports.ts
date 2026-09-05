@@ -84,3 +84,21 @@ export function airportLabel(code: string): string {
   const entry = airports.find(([iata]) => iata === code)
   return entry ? `${entry[1]} (${code})` : code
 }
+
+// Normalize recognized city aliases only; an airport may serve a different destination.
+export function canonicalDestination(value: string): string {
+  const match = destinationMatch(value)
+  if (!match?.automatic) return value.trim()
+  const cities: Record<string, string> = {
+    WRO: 'Wroclaw, Poland', FCO: 'Rome, Italy', CDG: 'Paris, France',
+    LHR: 'London, United Kingdom', JFK: 'New York, USA', HND: 'Tokyo, Japan',
+    ATH: 'Athens, Greece', JTR: 'Santorini, Greece', HER: 'Heraklion, Greece',
+    RHO: 'Rhodes, Greece', MXP: 'Milan, Italy', BCN: 'Barcelona, Spain', MAD: 'Madrid, Spain',
+    AMS: 'Amsterdam, Netherlands', DPS: 'Bali, Indonesia', MLE: 'Maldives', DXB: 'Dubai, UAE',
+    KEF: 'Reykjavik, Iceland', ZAG: 'Zagreb, Croatia', DBV: 'Dubrovnik, Croatia',
+    PRG: 'Prague, Czechia', CUN: 'Cancun, Mexico', BKK: 'Bangkok, Thailand', HKT: 'Phuket, Thailand',
+    LCA: 'Larnaca, Cyprus', PFO: 'Paphos, Cyprus', VIE: 'Vienna, Austria', BUD: 'Budapest, Hungary',
+    TLV: 'Tel Aviv, Israel', ETM: 'Eilat, Israel',
+  }
+  return cities[match.codes[0]] ?? value.trim()
+}
