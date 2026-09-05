@@ -22,6 +22,10 @@ def clean(value):
     return str(value or '').replace('|', ' / ').replace('\n', ' ')
 
 
+def destination_label(value):
+    return {'Wroclaw, Poland': 'ורוצלב, פולין', 'Krakow, Poland': 'קרקוב, פולין', 'Warsaw, Poland': 'ורשה, פולין', 'Poznan, Poland': 'פוזנן, פולין', 'Katowice, Poland': 'קטוביץ, פולין'}.get(value, value)
+
+
 MESSAGES = {
     'No verified flight price is available.': 'לא נמצא מחיר טיסה מאומת לתאריכים שבחרתם.',
     'No verified hotel price is available.': 'לא נמצא מחיר לינה מאומת לתאריכים שבחרתם.',
@@ -35,7 +39,7 @@ MESSAGES = {
 
 def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str:
     nights = (request.return_date - request.departure_date).days
-    destination = {'Wroclaw, Poland': 'ורוצלב, פולין'}.get(request.destination, request.destination)
+    destination = destination_label(request.destination)
     lines = ['# תוכנית הטיול שלכם', '', f'**יעד:** {destination}',
              f'**תאריכים:** {request.departure_date:%d/%m/%Y} עד {request.return_date:%d/%m/%Y} · {nights + 1} ימים, {nights} לילות',
              f'**נוסעים:** {request.travelers.adults} מבוגרים, {len(request.travelers.children)} ילדים',
@@ -49,7 +53,7 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
     segment_totals = []
     for index, stay in enumerate(segments):
         segment_nights = (stay.check_out - stay.check_in).days if stay else nights
-        label = stay.destination if stay else destination
+        label = destination_label(stay.destination) if stay else destination
         if stay:
             lines += [f'### לינה {index + 1}: {label}', f'{stay.check_in:%d/%m/%Y} עד {stay.check_out:%d/%m/%Y} · {segment_nights} לילות']
         hotels = [hotel for hotel in proposal.hotel_options if hotel.get('stay_index', 0) == index][:3 if stay else 5]
