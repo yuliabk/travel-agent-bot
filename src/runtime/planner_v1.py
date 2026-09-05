@@ -80,6 +80,8 @@ def _safe_evidence(record: EvidenceRecord) -> Dict[str, Any]:
             "overall_rating": normalized.get("overall_rating"),
             "price_basis": normalized.get("price_basis"),
         }
+    if record.type == EvidenceType.PLACE and normalized.get("kind") == "restaurant":
+        data["details"] = {key: normalized.get(key) for key in ("name", "city", "address", "rating")}
     return data
 
 
@@ -198,6 +200,7 @@ def build_proposal_draft(
         summary=summary,
         flight_options=flights,
         hotel_options=hotels,
+        restaurant_options=[{**r.normalized_data, "searched_at": r.searched_at.isoformat()} for r in evidence_pack.records if r.type == EvidenceType.PLACE and r.normalized_data.get("kind") == "restaurant"],
         daily_itinerary=daily_itinerary,
         estimated_total=[],
         evidence_ids=evidence_ids,
@@ -225,6 +228,7 @@ class GeminiPlannerV1:
             "Follow each supplied stay destination and its dates exactly. Include transfer days between them, and travel to/from the actual airport. "
             "Airport alternatives have NOT been selected: keep them conditional, never silently change the route. "
             "Include realistic travel time. "
+            "Include a meal stop each day, using supplied restaurant candidates in that city when available. Respect dietary notes but never claim allergy safety, kosher certification or menu prices without verification. Do not invent restaurant names if none are supplied; suggest an area for eating instead. "
             "Set each day's location to its actual city and country for map search. For transfer days include city in each place name too. "
             "Prefer nearby indoor alternatives in winter; do not assume seasonal attractions or mountain routes are open. "
             "Keep the overview concise and give practical daily descriptions. Do not mention internal evidence IDs or system jargon. "
