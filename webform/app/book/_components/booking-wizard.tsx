@@ -9,6 +9,7 @@ import { StepSummary } from './step-summary'
 import { ResultCard } from './result-card'
 import { LoadingAnimation } from './loading-animation'
 import { Check } from 'lucide-react'
+import { destinationAirportCode } from '@/lib/airports'
 
 export interface FormData {
   name: string
@@ -62,7 +63,10 @@ export function BookingWizard() {
   const [error, setError] = useState<string | null>(null)
 
   const updateForm = (partial: Partial<FormData>) => {
-    setForm((prev: FormData) => ({ ...(prev ?? {}), ...partial }))
+    setForm((prev: FormData) => ({ ...prev, ...partial,
+      ...(partial.destination !== undefined && partial.destination !== prev.destination
+        ? { destinationAirport: destinationAirportCode(partial.destination) ?? '' } : {}),
+    }))
   }
 
   const handleSubmit = async () => {
