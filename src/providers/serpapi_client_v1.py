@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import requests
+from concurrent.futures import ThreadPoolExecutor
+from src.runtime.provider_diagnostics import log_provider_failure
+from src.contracts.travel_v1 import EvidencePack, StaySegment
+from src.providers.serpapi_evidence import normalize_flights_response, normalize_hotels_response
 
 from src.contracts.travel_v1 import FlightRoutingPreference, TripRequest
 from src.providers.serpapi_evidence import build_evidence_pack, normalize_iata_code
@@ -34,7 +38,7 @@ class SerpApiClientV1:
         data.setdefault("search_parameters", safe_params)
         return data
 
-    def search_evidence(self, request: TripRequest, *, origin_iata: str, destination_iata: str):
+    def search_evidence(self, request: TripRequest, *, origin_iata: str, destination_iata: str, alternative_airports=None):
         origin = normalize_iata_code(origin_iata)
         destination = normalize_iata_code(destination_iata)
         if not origin or not destination:
@@ -69,10 +73,60 @@ class SerpApiClientV1:
             "api_key": self.api_key,
         }
 
-        flights_response = self._get(flight_params)
-        hotels_response = self._get(hotel_params)
-        return build_evidence_pack(
-            request.request_id,
-            flights_response=flights_response,
-            hotels_response=hotels_response,
-        )
+        stays = request.stays or [StaySegment(destination=request.destination, check_in=request.departure_date, check_out=request.return_date)] if request.return_date > request.departure_date else []
+        notes = []
+
+        def search(params):
+            try:
+                data = self._get(params)
+                if data.get("error"):
+                    return None
+                return data
+            except Exception as exc:
+                log_provider_failure("serpapi", exc, request_id=request.request_id)
+                return None
+
+        # Flight failures must not discard valid hotel results. Independent searches
+        # share a bounded worker pool; later fallback searches keep the same dates.
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            flight_future = pool.submit(search, flight_params)
+            hotel_futures = [pool.submit(search, {**hotel_params, "q": f"Hotels in {stay.destination}", "check_in_date": stay.check_in.isoformat(), "check_out_date": stay.check_out.isoformat()}) for stay in stays]
+            flight_data = flight_future.result()
+            flights = normalize_flights_response(flight_data or {})
+            for record in flights:
+                record.normalized_data.update({"arrival_iata": destination, "alternative": False})
+            records = list(flights)
+            for index, (stay, future) in enumerate(zip(stays, hotel_futures)):
+                data = future.result()
+                hotels = normalize_hotels_response(data or {})
+                if data is None:
+                    notes.append(f"חיפוש הלינה ב־{stay.destination} לא הושלם. המחיר למקטע זה עדיין חסר.")
+                for record in hotels:
+                    record.normalized_data.update({"stay_index": index, "stay_destination": stay.destination, "check_in": stay.check_in.isoformat(), "check_out": stay.check_out.isoformat()})
+                records.extend(hotels)
+
+            relevant = [record for record in flights if record.is_verified_price and (record.currency != request.currency or record.amount <= request.budget)]
+            if not relevant:
+                notes.append("לא התקבלה טיסה מתומחרת במסגרת התקציב לבקשה המקורית; נבדקו חלופות באותם תאריכים. אין בכך קביעה שאין טיסות זמינות.")
+                # These are candidates for comparison, not assumed transfer equivalents.
+                candidates = alternative_airports or {
+                    "WRO": ["POZ", "KTW"], "FCO": ["CIA"], "CDG": ["ORY"], "ORY": ["CDG"],
+                    "LHR": ["LGW", "STN"], "LGW": ["LHR"], "JFK": ["EWR"], "EWR": ["JFK"],
+                    "HND": ["NRT"], "NRT": ["HND"], "MXP": ["BGY", "LIN"], "LCA": ["PFO"], "PFO": ["LCA"],
+                }.get(destination, [])
+                candidates = list(dict.fromkeys(code for value in candidates if (code := normalize_iata_code(value)) and code not in (origin, destination)))[:3]
+                alternatives = []
+                if request.preferences.flight_routing != FlightRoutingPreference.ANY:
+                    alternatives.append(({**flight_params, "stops": 0}, "חלופה עם שינוי מגבלת העצירות"))
+                alternatives += [({**flight_params, "arrival_id": code}, f"חלופת נחיתה ב־{code}; יש לבדוק זמן ועלות הגעה למקום הלינה") for code in candidates]
+                pending = [(params, label, pool.submit(search, params)) for params, label in alternatives]
+                for params, label, future in pending:
+                    data = future.result()
+                    found = normalize_flights_response(data or {})
+                    notes.append(f"נבדקה {label}. " + ("נמצא מחיר להשוואה." if any(r.is_verified_price for r in found) else "לא התקבל מחיר מאומת."))
+                    for record in found:
+                        record.normalized_data.update({"arrival_iata": params["arrival_id"], "alternative": True, "alternative_note": label})
+                    records.extend(found)
+                if not alternatives:
+                    notes.append("לא הוגדר שדה חלופי נוסף. אפשר להזין שדות חלופיים בבקשה ולנסות שוב, או לשנות תאריכים.")
+        return EvidencePack(request_id=request.request_id, records=records, search_notes=notes)
