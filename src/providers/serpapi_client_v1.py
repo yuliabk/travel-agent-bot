@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import requests
+from threading import Event
 from concurrent.futures import ThreadPoolExecutor
 from src.runtime.provider_diagnostics import log_provider_failure
-from src.contracts.travel_v1 import EvidencePack, StaySegment
+from src.contracts.travel_v1 import EvidencePack, StaySegment, EvidenceRecord, EvidenceType, EvidenceSourceStatus
 from src.providers.serpapi_evidence import normalize_flights_response, normalize_hotels_response
 
 from src.contracts.travel_v1 import FlightRoutingPreference, TripRequest
@@ -27,9 +28,18 @@ class SerpApiClientV1:
         self.api_key = api_key
         self.session = session or requests.Session()
         self.timeout = timeout
+        self.rate_limited = Event()
 
     def _get(self, params: dict) -> dict:
         response = self.session.get(SERPAPI_URL, params=params, timeout=self.timeout)
+        if response.status_code == 429:
+            self.rate_limited.set()
+            try:
+                message = str(response.json().get("error", "")).lower()
+            except Exception:
+                message = ""
+            reason = "quota_exceeded" if any(word in message for word in ("run out", "quota", "plan", "limit for", "credits")) else "rate_limited"
+            raise requests.HTTPError(reason, response=response)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict):
@@ -77,6 +87,8 @@ class SerpApiClientV1:
         notes = []
 
         def search(params):
+            if self.rate_limited.is_set():
+                return None
             try:
                 data = self._get(params)
                 if data.get("error"):
@@ -88,7 +100,7 @@ class SerpApiClientV1:
 
         # Flight failures must not discard valid hotel results. Independent searches
         # share a bounded worker pool; later fallback searches keep the same dates.
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             flight_future = pool.submit(search, flight_params)
             hotel_futures = [pool.submit(search, {**hotel_params, "q": f"Hotels in {stay.destination}", "check_in_date": stay.check_in.isoformat(), "check_out_date": stay.check_out.isoformat()}) for stay in stays]
             flight_data = flight_future.result()
@@ -106,11 +118,11 @@ class SerpApiClientV1:
                 records.extend(hotels)
 
             relevant = [record for record in flights if record.is_verified_price and (record.currency != request.currency or record.amount <= request.budget)]
-            if not relevant:
+            if not relevant and not self.rate_limited.is_set():
                 notes.append("לא התקבלה טיסה מתומחרת במסגרת התקציב לבקשה המקורית; נבדקו חלופות באותם תאריכים. אין בכך קביעה שאין טיסות זמינות.")
                 # These are candidates for comparison, not assumed transfer equivalents.
                 candidates = alternative_airports or {
-                    "WRO": ["POZ", "KTW"], "FCO": ["CIA"], "CDG": ["ORY"], "ORY": ["CDG"],
+                    "WRO": ["KRK", "POZ", "KTW"], "WAW": ["WMI", "KRK", "WRO"], "FCO": ["CIA"], "CDG": ["ORY"], "ORY": ["CDG"],
                     "LHR": ["LGW", "STN"], "LGW": ["LHR"], "JFK": ["EWR"], "EWR": ["JFK"],
                     "HND": ["NRT"], "NRT": ["HND"], "MXP": ["BGY", "LIN"], "LCA": ["PFO"], "PFO": ["LCA"],
                 }.get(destination, [])
@@ -118,7 +130,7 @@ class SerpApiClientV1:
                 alternatives = []
                 if request.preferences.flight_routing != FlightRoutingPreference.ANY:
                     alternatives.append(({**flight_params, "stops": 0}, "חלופה עם שינוי מגבלת העצירות"))
-                alternatives += [({**flight_params, "arrival_id": code}, f"חלופת נחיתה ב־{code}; יש לבדוק זמן ועלות הגעה למקום הלינה") for code in candidates]
+                alternatives += [({**flight_params, "arrival_id": code, "stops": 0}, f"חלופת נחיתה ב־{code}, כולל אפשרות לעצירות; יש לבדוק זמן ועלות הגעה למקום הלינה") for code in candidates]
                 pending = [(params, label, pool.submit(search, params)) for params, label in alternatives]
                 for params, label, future in pending:
                     data = future.result()
@@ -129,4 +141,18 @@ class SerpApiClientV1:
                     records.extend(found)
                 if not alternatives:
                     notes.append("לא הוגדר שדה חלופי נוסף. אפשר להזין שדות חלופיים בבקשה ולנסות שוב, או לשנות תאריכים.")
+            cities = list(dict.fromkeys(stay.destination for stay in stays)) or [request.destination]
+            if not self.rate_limited.is_set():
+                restaurant_futures = [(city, pool.submit(search, {"engine": "google_maps", "type": "search", "q": f"restaurants in {city}", "hl": "en", "api_key": self.api_key})) for city in cities]
+                for city, future in restaurant_futures:
+                    data = future.result() or {}
+                    for item in (data.get("local_results") or [])[:3]:
+                        if not isinstance(item, dict) or not item.get("title"):
+                            continue
+                        records.append(EvidenceRecord(type=EvidenceType.PLACE, provider="serpapi/google_maps", source_status=EvidenceSourceStatus.UNVERIFIED,
+                            provider_reference=str(item.get("place_id") or item.get("data_id") or data.get("search_metadata", {}).get("id") or "") or None,
+                            normalized_data={"kind": "restaurant", "name": item["title"], "city": city, "address": item.get("address"), "price_label": item.get("price"), "rating": item.get("rating"), "website": item.get("website"), "place_id": item.get("place_id")}
+                        ))
+            if self.rate_limited.is_set():
+                notes.append("ספק החיפוש חסם בקשות בגלל הגבלת קצב או מכסה (429). חיפוש הטיסות, החלופות או המסעדות לא הושלם; אין להסיק מכך שאין טיסות. נסו שוב מאוחר יותר; אם ההגבלה נמשכת נדרשת בדיקת מכסת החיפוש בחשבון.")
         return EvidencePack(request_id=request.request_id, records=records, search_notes=notes)
