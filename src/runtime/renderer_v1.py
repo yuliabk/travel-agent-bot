@@ -1,4 +1,5 @@
 """Readable Hebrew output with explicitly scoped provider-based cost estimates."""
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from src.contracts.travel_v1 import ProposalDraft, TripRequest
 
@@ -41,42 +42,76 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
              f'**התקציב שהגדרתם:** {money(request.budget, request.currency)}', '']
     if proposal.summary:
         lines += ['## מבט על הטיול', proposal.summary, '']
-    lines += ['## פירוט עלויות לינה', 'כל שורה היא חלופה נפרדת. בוחרים מלון אחד; אין לחבר את מחירי המלונות.', '',
-              '| מלון | מחיר ללילה | עלות לשהות | אופן החישוב |', '| --- | --- | --- | --- |']
-    subtotals = []
-    for hotel in proposal.hotel_options[:5]:
-        nightly = amount(hotel.get('amount'))
-        total = amount(hotel.get('stay_total'))
-        basis = 'מחיר לשהות שנמסר מהספק'
-        if total is None and nightly is not None and hotel.get('price_basis') == 'per_night' and nights > 0:
-            total = nightly * nights
-            basis = f"אומדן: {money(nightly, hotel.get('currency'))} × {nights} לילות"
-        if total is not None and hotel.get('currency'):
-            subtotals.append((total, hotel['currency']))
-        lines.append(f"| {clean(hotel.get('name') or 'מלון')} | {money(nightly, hotel.get('currency'))} | {money(total, hotel.get('currency'))} | {basis if total is not None else 'בסיס המחיר דורש בירור'} |")
-    if not proposal.hotel_options:
-        lines.append('| טרם נמצאה אפשרות לינה | טרם תומחר | טרם תומחר | דרוש חיפוש נוסף |')
-    lines += ['', 'המחירים מתייחסים לאפשרות הלינה שהחזיר החיפוש. יש לאשר מספר חדרים, התאמה לכל הנוסעים, מסים ותנאי ביטול. אין להכפיל מחיר במספר הנוסעים ללא בדיקת תפוסת החדר.', '', '## אפשרויות טיסה']
-    for flight in proposal.flight_options[:3]:
-        segments = flight.get('segments') or []
-        airline = segments[0].get('airline') if segments else 'טיסה'
-        lines.append(f"- **{clean(airline or 'טיסה')}:** {money(flight.get('amount'), flight.get('currency'))} — מחיר שהתקבל בחיפוש. יש לאשר שהוא כולל הלוך וחזור, את כל הנוסעים וכבודה.")
-    if not proposal.flight_options:
-        lines.append('לא נמצא מחיר טיסה מאומת. עלות הטיסות חסרה בסיכום.')
+    if request.arrival_airport:
+        lines += [f'**שדה נחיתה שנבחר:** {request.arrival_airport}. מקומות הלינה נקבעים בנפרד.', '']
+    lines += ['## פירוט עלויות לינה', 'בוחרים חלופת מלון אחת בכל מקום לינה. אין לחבר חלופות לאותו מקטע.', '']
+    segments = request.stays or [None]
+    segment_totals = []
+    for index, stay in enumerate(segments):
+        segment_nights = (stay.check_out - stay.check_in).days if stay else nights
+        label = stay.destination if stay else destination
+        if stay:
+            lines += [f'### לינה {index + 1}: {label}', f'{stay.check_in:%d/%m/%Y} עד {stay.check_out:%d/%m/%Y} · {segment_nights} לילות']
+        hotels = [hotel for hotel in proposal.hotel_options if hotel.get('stay_index', 0) == index][:3 if stay else 5]
+        lines += ['| מלון | מחיר ללילה | עלות למקטע הלינה | אופן החישוב |', '| --- | --- | --- | --- |']
+        totals = {}
+        for hotel in hotels:
+            nightly = amount(hotel.get('amount'))
+            total = amount(hotel.get('stay_total'))
+            basis = 'מחיר לשהות שנמסר מהספק'
+            if total is None and nightly is not None and hotel.get('price_basis') == 'per_night' and segment_nights > 0:
+                total = nightly * segment_nights
+                basis = f"אומדן: {money(nightly, hotel.get('currency'))} × {segment_nights} לילות"
+            currency = hotel.get('currency')
+            if total is not None and currency:
+                totals[currency] = min(totals.get(currency, total), total)
+            lines.append(f"| {clean(hotel.get('name') or 'מלון')} | {money(nightly, currency)} | {money(total, currency)} | {basis if total is not None else 'בסיס המחיר דורש בירור'} |")
+        if not hotels:
+            lines.append('| לא נמצא מחיר למקום לינה זה | טרם תומחר | טרם תומחר | דרוש חיפוש נוסף |')
+        segment_totals.append((label, totals))
+        lines.append('')
+    lines += ['המחירים מתייחסים לאפשרות הלינה שהחזיר החיפוש. יש לאשר מספר חדרים, התאמה לכל הנוסעים, מסים ותנאי ביטול. אין להכפיל מחיר במספר הנוסעים ללא בדיקת תפוסת החדר.', '', '## אפשרויות טיסה']
+    primary = [flight for flight in proposal.flight_options if not flight.get('alternative')]
+    alternatives = [flight for flight in proposal.flight_options if flight.get('alternative')]
+    def flight_line(flight):
+        legs = flight.get('segments') or []
+        airline = legs[0].get('airline') if legs else 'טיסה'
+        code = flight.get('arrival_iata') or ''
+        exceeds = flight.get('currency') == request.currency and amount(flight.get('amount')) is not None and amount(flight.get('amount')) > request.budget
+        return f"- **{clean(airline or 'טיסה')}:** {money(flight.get('amount'), flight.get('currency'))} — נחיתה ב־{code}. יש לאשר הלוך וחזור, מספר נוסעים וכבודה." + (' מחיר הטיסה לבדו חורג מהתקציב שהוגדר.' if exceeds else '')
+    lines += [flight_line(flight) for flight in primary[:3]]
+    if not primary:
+        lines.append('לא התקבל מחיר טיסה מאומת לפי הבקשה המקורית.')
+    if alternatives:
+        lines += ['', '## חלופות טיסה לבחירתכם', 'אלה הצעות נוספות בלבד. שדה הנחיתה שבחרתם ומקומות הלינה לא השתנו.']
+        seen = set()
+        for flight in alternatives:
+            key = (flight.get('arrival_iata'), flight.get('alternative_note'))
+            if key in seen:
+                continue
+            seen.add(key)
+            lines += [f"**{flight.get('alternative_note') or 'חלופה'}**", flight_line(flight)]
+        lines += ['עלות וזמן המעבר משדה חלופי למקום הלינה טרם אומתו ואינם כלולים במחיר הטיסה. יש לבדוק גם הגעה לשדה לטיסת החזרה.']
     lines += ['', '## סיכום התקציב', '| רכיב | סכום ומצב |', '| --- | --- |']
-    for currency in sorted({currency for _, currency in subtotals}):
-        minimum = min(total for total, code in subtotals if code == currency)
-        lines.append(f'| לינה בלבד — החל מ־ | {money(minimum, currency)} לאחת החלופות המוצגות, בכפוף לאישור תפוסה |')
-    if not subtotals:
-        lines.append('| לינה | טרם תומחרה לשהות מלאה |')
+    for index, (label, totals) in enumerate(segment_totals):
+        costs = ' / '.join(money(total, currency) for currency, total in totals.items()) or 'חסר מחיר'
+        lines.append(f'| לינה {index + 1}: {clean(label)} — החל מ־ | {costs} |')
+    common = set.intersection(*(set(totals) for _, totals in segment_totals)) if segment_totals else set()
+    if common:
+        for currency in sorted(common):
+            total = sum(totals[currency] for _, totals in segment_totals)
+            lines.append(f'| סך לינה לכל המקטעים — החל מ־ | {money(total, currency)}, חלופה אחת בכל מקטע ובכפוף לאישור תפוסה |')
+    else:
+        lines.append('| סך הלינה לכל הטיול | לא ניתן לחשב: חסר מחיר למקטע או שהמטבעות שונים |')
     lines += ['| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |',
+              '| מעברים בין מקומות הלינה ומשדה התעופה | טרם תומחרו |',
               '| אוכל, תחבורה, אטרקציות וביטוח | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',
               '**הסכום הידוע הוא ללינה בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
     if proposal.daily_itinerary:
         lines.append('## המסלול היומי והמפה')
         for day in proposal.daily_itinerary:
-            lines += [f"### יום {day.get('day_number', '')}: {day.get('title', '')}", str(day.get('summary') or '')]
+            lines += [f"### יום {day.get('day_number', '')}: {day.get('title', '')}", f"**מיקום ליום:** {day.get('location') or request.destination}", str(day.get('summary') or '')]
             lines += [f'- [[{place}]]' for place in day.get('suggested_places', []) or []]
             lines.append('')
     notes = list(dict.fromkeys(MESSAGES.get(item, item) for item in proposal.assumptions + proposal.warnings))
