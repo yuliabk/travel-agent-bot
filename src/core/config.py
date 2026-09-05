@@ -33,7 +33,7 @@ def _get_int(name: str, default: int) -> int:
 
 # --- AI (Google Gemini) ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash").strip() or "gemini-3.5-flash"
 
 # --- SerpApi (flights & hotels) ---
 SERPAPI_KEY = os.environ.get("SERPAPI_API_KEY", "")
