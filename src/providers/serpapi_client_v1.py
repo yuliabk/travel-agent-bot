@@ -49,6 +49,10 @@ class SerpApiClientV1:
         data.setdefault("search_parameters", safe_params)
         return data
 
+    def search_attraction_prices(self, request, narrative):
+        from src.providers.attraction_prices_v1 import search_attraction_prices
+        return search_attraction_prices(self, request, narrative)
+
     def search_evidence(self, request: TripRequest, *, origin_iata: str, destination_iata: str, alternative_airports=None):
         origin = normalize_iata_code(origin_iata)
         destination = normalize_iata_code(destination_iata)
