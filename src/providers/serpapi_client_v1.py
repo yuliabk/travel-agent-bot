@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import requests
 from threading import Event
+from src.providers.nearby_airports import nearby_airports
 from concurrent.futures import ThreadPoolExecutor
 from src.runtime.provider_diagnostics import log_provider_failure
 from src.contracts.travel_v1 import EvidencePack, StaySegment, EvidenceRecord, EvidenceType, EvidenceSourceStatus
@@ -120,17 +121,24 @@ class SerpApiClientV1:
             relevant = [record for record in flights if record.is_verified_price and (record.currency != request.currency or record.amount <= request.budget)]
             if not relevant and not self.rate_limited.is_set():
                 notes.append("לא התקבלה טיסה מתומחרת במסגרת התקציב לבקשה המקורית; נבדקו חלופות באותם תאריכים. אין בכך קביעה שאין טיסות זמינות.")
-                # These are candidates for comparison, not assumed transfer equivalents.
-                candidates = alternative_airports or {
-                    "WRO": ["KRK", "POZ", "KTW"], "WAW": ["WMI", "KRK", "WRO"], "FCO": ["CIA"], "CDG": ["ORY"], "ORY": ["CDG"],
-                    "LHR": ["LGW", "STN"], "LGW": ["LHR"], "JFK": ["EWR"], "EWR": ["JFK"],
-                    "HND": ["NRT"], "NRT": ["HND"], "MXP": ["BGY", "LIN"], "LCA": ["PFO"], "PFO": ["LCA"],
-                }.get(destination, [])
+                # Explicit customer alternatives take precedence. Otherwise use a
+                # worldwide geographic index, independent of destination spelling.
+                nearby = nearby_airports(destination, exclude=(origin,)) if not alternative_airports else []
+                candidates = alternative_airports or [item["code"] for item in nearby]
                 candidates = list(dict.fromkeys(code for value in candidates if (code := normalize_iata_code(value)) and code not in (origin, destination)))[:3]
+                distances = {item["code"]: item for item in nearby}
+                def alternative_label(code):
+                    label = f"חלופת נחיתה ב־{code}, כולל אפשרות לעצירות"
+                    if code in distances:
+                        item = distances[code]
+                        label += f"; כ־{item['distance_km']} ק״מ בקו אווירי משדה הנחיתה המקורי"
+                        if item['cross_border']:
+                            label += "; במדינה אחרת — נדרשת בדיקת מעבר גבול"
+                    return label + "; יש לבדוק זמן ועלות הגעה למקום הלינה"
                 alternatives = []
                 if request.preferences.flight_routing != FlightRoutingPreference.ANY:
                     alternatives.append(({**flight_params, "stops": 0}, "חלופה עם שינוי מגבלת העצירות"))
-                alternatives += [({**flight_params, "arrival_id": code, "stops": 0}, f"חלופת נחיתה ב־{code}, כולל אפשרות לעצירות; יש לבדוק זמן ועלות הגעה למקום הלינה") for code in candidates]
+                alternatives += [({**flight_params, "arrival_id": code, "stops": 0}, alternative_label(code)) for code in candidates]
                 pending = [(params, label, pool.submit(search, params)) for params, label in alternatives]
                 for params, label, future in pending:
                     data = future.result()
@@ -140,7 +148,7 @@ class SerpApiClientV1:
                         record.normalized_data.update({"arrival_iata": params["arrival_id"], "alternative": True, "alternative_note": label})
                     records.extend(found)
                 if not alternatives:
-                    notes.append("לא הוגדר שדה חלופי נוסף. אפשר להזין שדות חלופיים בבקשה ולנסות שוב, או לשנות תאריכים.")
+                    notes.append("לא אותרו במאגר שדות חלופיים בטווח 300 ק״מ משדה הנחיתה שנבחר. אפשר להזין שדות חלופיים אחרים בבקשה.")
             cities = list(dict.fromkeys(stay.destination for stay in stays)) or [request.destination]
             if not self.rate_limited.is_set():
                 restaurant_futures = [(city, pool.submit(search, {"engine": "google_maps", "type": "search", "q": f"restaurants in {city}", "hl": "en", "api_key": self.api_key})) for city in cities]
