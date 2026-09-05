@@ -26,6 +26,8 @@ def log_provider_failure(provider, exc, *, request_id=None, model=None):
         ("resource_exhausted", "quota_exceeded"),
         ("permission_denied", "permission_denied"),
         ("not found", "model_or_resource_not_found"),
+        ("not_found", "model_or_resource_not_found"),
+        ("no longer available", "model_unavailable"),
         ("unknown name", "unsupported_request_field"),
         ("schema", "schema_error"),
         ("structured narrative", "missing_structured_narrative"),
