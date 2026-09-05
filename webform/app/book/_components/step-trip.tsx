@@ -63,7 +63,7 @@ export function StepTrip({ form, updateForm, onNext, onBack }: Props) {
           <p className="text-xs text-muted-foreground mb-2">לא זוהה שדה עבור היעד. נסו שם עיר, או בחרו שדה מהרשימה.</p>
           <Input id="destinationAirport" list="airport-options" value={form.destinationAirport} onChange={(e) => updateForm({destinationAirport:e.target.value})} placeholder="שם שדה או קוד שדה" />
         </> : <p className="text-sm text-muted-foreground">שדה הנחיתה ייקבע לאחר הזנת יעד הנסיעה.</p>}
-        {errors.destinationAirport && <p className="text-destructive text-xs mt-1">{errors.destinationAirport}</p>}
+        {errors.destinationAirport && (!landingCode || landingCode === airportCode(form.originAirport)) && <p className="text-destructive text-xs mt-1">{errors.destinationAirport}</p>}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div><Label htmlFor="dateFrom" className="mb-1.5 block">תאריך התחלה</Label><div className="relative"><Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/><Input id="dateFrom" type="date" value={form.dateFrom} onChange={(e:any)=>updateForm({dateFrom:e.target.value})} className="pr-10" variant={errors.dateFrom?'error':'default'}/></div>{errors.dateFrom&&<p className="text-destructive text-xs mt-1">{errors.dateFrom}</p>}</div>
