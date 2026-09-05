@@ -129,12 +129,12 @@ def map_points(req: MapPointsRequest):
             local_names = re.findall(r"\(([^()]*[A-Za-z][^()]*)\)", name)
             query_name = local_names[-1] if local_names else name
             response = requests.get("https://serpapi.com/search.json", params={
-                "engine": "google_maps", "q": f"{query_name}, {req.destination}",
+                "engine": "google_maps", "type": "search", "q": f"{query_name}, {req.destination}",
                 "hl": "iw", "api_key": config.SERPAPI_KEY,
             }, timeout=(3, 5))
             response.raise_for_status()
             data = response.json()
-            place = data.get("place_results") or next(iter(data.get("local_results") or []), {})
+            place = data.get("place_results") or next((item for item in (data.get("local_results") or []) if isinstance(item, dict) and item.get("gps_coordinates")), {})
             gps = place.get("gps_coordinates") or {}
             lat, lng = gps.get("latitude"), gps.get("longitude")
             if all(type(n) in (int, float) and math.isfinite(n) for n in (lat, lng)) and -90 <= lat <= 90 and -180 <= lng <= 180:
@@ -143,7 +143,7 @@ def map_points(req: MapPointsRequest):
             log_provider_failure("map_geocoding", exc)
         return None
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(locate, names))
     return {"points": [point for point in results if point], "missing": [name for name, point in zip(names, results) if not point]}
 
