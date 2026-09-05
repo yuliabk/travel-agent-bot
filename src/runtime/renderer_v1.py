@@ -1,5 +1,6 @@
 """Readable Hebrew output with explicitly scoped provider-based cost estimates."""
 from datetime import date
+from src.runtime.attraction_costs_v1 import render_attraction_costs
 from src.runtime.ground_transport_v1 import render_ground_transport
 from decimal import Decimal, InvalidOperation
 from src.contracts.travel_v1 import ProposalDraft, TripRequest
@@ -125,9 +126,11 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
         lines.append('| סך הלינה לכל הטיול | לא ניתן לחשב: חסר מחיר למקטע או שהמטבעות שונים |')
     lines += ['| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |',
               '| תחבורה ציבורית / רכב שכור / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; טרם תומחר |',
-              '| אוכל, אטרקציות וביטוח נסיעות | טרם תומחרו |',
+              '| אטרקציות | פירוט לפי ימים בהמשך; סך משפחתי טרם אומת |',
+              '| אוכל וביטוח נסיעות | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',
               '**הסכום הידוע הוא ללינה בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
+    lines += render_attraction_costs(request, proposal)
     lines += ['## מסעדות ומחירי אוכל', 'המחירים הבאים הם טווח או רמת מחיר שפורסמו במפות Google בזמן החיפוש, ולא מחיר מובטח לארוחה בתאריכי הטיול. יש לבדוק תפריט עדכני, כשרות ואלרגנים מול המסעדה.']
     if proposal.restaurant_options:
         for city in dict.fromkeys(item.get('city') for item in proposal.restaurant_options):
