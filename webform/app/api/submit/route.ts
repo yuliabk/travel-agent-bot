@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server'
-import { airportCode, destinationAirportCode } from '@/lib/airports'
+import { airportCode, destinationAirportCode, canonicalDestination } from '@/lib/airports'
 
 const API_TIMEOUT_MS = 90_000
 
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         name,
         email,
         phone: phone || null,
-        destination,
+        destination: canonicalDestination(destination),
         dateFrom,
         dateTo,
         adults: Number(adults) || 1,
