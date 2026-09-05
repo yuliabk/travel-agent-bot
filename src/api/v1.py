@@ -25,19 +25,29 @@ from src.contracts.travel_v1 import (
 from src.core import config
 from src.governance.audit_v1 import build_audit_bundle
 from src.governance.evals_v1 import evaluate_proposal
-from src.intake.abacus_webform_v1 import (
-    AbacusWebFormPayload,
-    CanonicalCompletion,
-    migrate_abacus_payload,
-)
+from src.intake.abacus_webform_v1 import AbacusWebFormPayload, CanonicalCompletion, migrate_abacus_payload
 from src.providers.serpapi_client_v1 import SerpApiClientV1
 from src.runtime.planner_v1 import GeminiPlannerV1, build_proposal_draft
+from src.runtime.workflow_v1 import WebDraftWorkflowResult, run_web_draft_workflow
 
 router = APIRouter(prefix="/v1", tags=["contract-v1"])
 
 
 def _env_enabled(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _model_planner():
+    if not _env_enabled("V1_MODEL_PLANNER_ENABLED") or not config.GEMINI_API_KEY:
+        return None
+    from google import genai
+    return GeminiPlannerV1(genai.Client(api_key=config.GEMINI_API_KEY), config.GEMINI_MODEL)
+
+
+def _evidence_searcher():
+    if not _env_enabled("V1_LIVE_SEARCH_ENABLED") or not config.SERPAPI_KEY:
+        return None
+    return SerpApiClientV1(config.SERPAPI_KEY)
 
 
 class ContractInfo(BaseModel):
@@ -58,6 +68,13 @@ class NormalizeAbacusResponse(BaseModel):
     trip_request: Optional[TripRequest] = None
     missing_fields: List[str] = Field(default_factory=list)
     legacy_budget_label: Optional[str] = None
+
+
+class WebDraftRequest(BaseModel):
+    payload: AbacusWebFormPayload
+    completion: Optional[CanonicalCompletion] = None
+    origin_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    destination_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
 
 
 class EvidenceSearchRequest(BaseModel):
@@ -102,10 +119,7 @@ class ApproveProposalResponse(BaseModel):
 def _require_agent_identity(authorization: Optional[str], agent_id: Optional[str]) -> str:
     expected = os.getenv("OWNER_APPROVAL_TOKEN", "")
     if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail="approval endpoint is disabled until OWNER_APPROVAL_TOKEN is configured",
-        )
+        raise HTTPException(status_code=503, detail="approval endpoint is disabled until OWNER_APPROVAL_TOKEN is configured")
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer approval token")
     supplied = authorization.removeprefix("Bearer ").strip()
@@ -128,31 +142,36 @@ def contract_info() -> ContractInfo:
 def normalize_abacus(req: NormalizeAbacusRequest) -> NormalizeAbacusResponse:
     result = migrate_abacus_payload(req.payload, req.completion)
     if not result.is_complete:
-        return NormalizeAbacusResponse(
-            status="NEEDS_INFORMATION",
-            missing_fields=result.missing_fields,
-            legacy_budget_label=result.legacy_budget_label,
-        )
-    return NormalizeAbacusResponse(
-        status="READY_FOR_SEARCH",
-        trip_request=result.canonical_request,
-        legacy_budget_label=result.legacy_budget_label,
+        return NormalizeAbacusResponse(status="NEEDS_INFORMATION", missing_fields=result.missing_fields, legacy_budget_label=result.legacy_budget_label)
+    return NormalizeAbacusResponse(status="READY_FOR_SEARCH", trip_request=result.canonical_request, legacy_budget_label=result.legacy_budget_label)
+
+
+@router.post("/web/draft", response_model=WebDraftWorkflowResult)
+def web_draft(req: WebDraftRequest) -> WebDraftWorkflowResult:
+    try:
+        planner = _model_planner()
+    except Exception:
+        planner = None
+    return run_web_draft_workflow(
+        req.payload,
+        req.completion,
+        origin_iata=req.origin_iata,
+        destination_iata=req.destination_iata,
+        evidence_searcher=_evidence_searcher(),
+        planner=planner,
+        model_version=config.GEMINI_MODEL if planner is not None else "planner-disabled",
     )
 
 
 @router.post("/evidence/search", response_model=EvidenceSearchResponse)
 def search_evidence(req: EvidenceSearchRequest) -> EvidenceSearchResponse:
-    if not _env_enabled("V1_LIVE_SEARCH_ENABLED"):
-        raise HTTPException(status_code=503, detail="Contract v1 live search is disabled")
-    if not config.SERPAPI_KEY:
+    searcher = _evidence_searcher()
+    if searcher is None:
+        if not _env_enabled("V1_LIVE_SEARCH_ENABLED"):
+            raise HTTPException(status_code=503, detail="Contract v1 live search is disabled")
         raise HTTPException(status_code=503, detail="SERPAPI_API_KEY is not configured")
-
     try:
-        pack = SerpApiClientV1(config.SERPAPI_KEY).search_evidence(
-            req.trip_request,
-            origin_iata=req.origin_iata,
-            destination_iata=req.destination_iata,
-        )
+        pack = searcher.search_evidence(req.trip_request, origin_iata=req.origin_iata, destination_iata=req.destination_iata)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -165,35 +184,23 @@ def generate_proposal(req: GenerateProposalRequest) -> GenerateProposalResponse:
     planner_enabled = _env_enabled("V1_MODEL_PLANNER_ENABLED")
     narrative = None
     model_version = "planner-disabled"
-
     if planner_enabled:
         if not config.GEMINI_API_KEY:
             raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured for Contract v1 planner")
         try:
-            from google import genai
-
-            planner = GeminiPlannerV1(genai.Client(api_key=config.GEMINI_API_KEY), config.GEMINI_MODEL)
+            planner = _model_planner()
+            if planner is None:
+                raise ValueError("planner is unavailable")
             narrative = planner.generate_narrative(req.trip_request, req.evidence_pack)
             model_version = config.GEMINI_MODEL
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception:
-            proposal = build_proposal_draft(
-                req.trip_request,
-                req.evidence_pack,
-                narrative=None,
-                model_version=config.GEMINI_MODEL,
-            )
+            proposal = build_proposal_draft(req.trip_request, req.evidence_pack, narrative=None, model_version=config.GEMINI_MODEL)
             proposal.warnings.append("Planner model failed; returning partial evidence-only draft.")
             return GenerateProposalResponse(proposal=proposal, planner_used=False)
-
     try:
-        proposal = build_proposal_draft(
-            req.trip_request,
-            req.evidence_pack,
-            narrative=narrative,
-            model_version=model_version,
-        )
+        proposal = build_proposal_draft(req.trip_request, req.evidence_pack, narrative=narrative, model_version=model_version)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return GenerateProposalResponse(proposal=proposal, planner_used=narrative is not None)
@@ -214,18 +221,9 @@ def approve(
     eval_result = evaluate_proposal(req.trip_request, req.evidence_pack, req.proposal)
     if not eval_result.can_approve:
         failed = [check.check_id for check in eval_result.checks if check.status.value == "FAIL"]
-        raise HTTPException(
-            status_code=409,
-            detail={"message": "proposal failed eval gate", "failed_checks": failed},
-        )
-
+        raise HTTPException(status_code=409, detail={"message": "proposal failed eval gate", "failed_checks": failed})
     try:
-        approval = create_approval(
-            req.proposal,
-            eval_result,
-            agent_id=identity,
-            comment=req.comment,
-        )
+        approval = create_approval(req.proposal, eval_result, agent_id=identity, comment=req.comment)
         audit = build_audit_bundle(
             req.trip_request,
             req.evidence_pack,
@@ -238,9 +236,4 @@ def approve(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    return ApproveProposalResponse(
-        eval_result=eval_result,
-        approval=approval,
-        audit_bundle=audit,
-    )
+    return ApproveProposalResponse(eval_result=eval_result, approval=approval, audit_bundle=audit)
