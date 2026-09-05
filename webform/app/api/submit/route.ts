@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server'
-import { airportCode } from '@/lib/airports'
+import { airportCode, destinationAirportCode } from '@/lib/airports'
 
 const API_TIMEOUT_MS = 90_000
 
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     const originIata = airportCode(originAirport)
-    const destinationIata = airportCode(destinationAirport)
+    const destinationIata = destinationAirportCode(destination, destinationAirport)
     if (!originIata || !destinationIata || originIata === destinationIata) {
       return Response.json({ error: 'בחרו שדות המראה ונחיתה שונים ותקינים בפרטי הטיול.' }, { status: 422 })
     }
