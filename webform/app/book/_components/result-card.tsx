@@ -63,8 +63,8 @@ export function ResultCard({ response, form }: Props) {
         <p className="text-sm text-muted-foreground mb-4">פתחו יום במפות Google, או בחרו מקום להצגה על המפה. בדקו זמני נסיעה לפני היציאה.</p>
         <div className="grid gap-4 sm:grid-cols-2">{itineraryDays(response).map((day, i) => <div key={i} className="rounded-lg border p-4">
           <h3 className="font-semibold mb-2">{day.label}</h3>
-          {Array.from({ length: Math.ceil(Math.max(day.places.length - 1, 1) / 4) }, (_, part) => <a key={part} className="block text-primary underline mb-2" href={routeUrl(day.places.slice(part * 4, part * 4 + 5), form.destination)} target="_blank" rel="noopener noreferrer">פתיחת המסלול{day.places.length > 5 ? ` — חלק ${part + 1}` : ''}</a>)}
-          <ul className="space-y-1">{day.places.map(place => <li key={place}><a className="text-sm underline" href={mapsUrl(place, form.destination)} target="_blank" rel="noopener noreferrer">{place}</a></li>)}</ul>
+          {Array.from({ length: Math.ceil(Math.max(day.places.length - 1, 1) / 4) }, (_, part) => <a key={part} className="block text-primary underline mb-2" href={routeUrl(day.places.slice(part * 4, part * 4 + 5), day.destination || form.destination)} target="_blank" rel="noopener noreferrer">פתיחת המסלול{day.places.length > 5 ? ` — חלק ${part + 1}` : ''}</a>)}
+          <ul className="space-y-1">{day.places.map(place => <li key={place}><a className="text-sm underline" href={mapsUrl(place, day.destination || form.destination)} target="_blank" rel="noopener noreferrer">{place}</a></li>)}</ul>
         </div>)}</div>
       </section>}
       <div className="no-print flex flex-col sm:flex-row items-center justify-center gap-3">
