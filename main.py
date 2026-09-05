@@ -9,14 +9,16 @@ Channels:
 * WhatsApp  -> ``GET/POST /webhook``          (Meta Cloud API)
 * Web Form  -> ``POST /api/webform``          (structured JSON)
 * Email     -> IMAP polling + SMTP (background thread, no HTTP route)
-* Contract  -> ``/v1/*``                      (side-effect-free governance API)
+* Contract  -> ``/v1/*``                      (governed Contract v1 API)
 """
 
 import asyncio
 import contextlib
+import os
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -28,6 +30,7 @@ from src.core.session import session_manager
 from src.channels import whatsapp, webform
 from src.channels.email import email_poller
 from src.api import v1
+from src.api.web_gate_v1 import webform_gate_decision
 
 logger = get_logger("main")
 
@@ -37,6 +40,23 @@ app = FastAPI(title="YB Travel Agent API - Multi-Channel (Gemini Powered)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def contract_v1_webform_gate(request: Request, call_next):
+    """Protect PII-bearing web intake endpoints with a server-to-server token."""
+    enabled = os.getenv("V1_WEBFORM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    expected = os.getenv("V1_WEBFORM_TOKEN", "")
+    status, message = webform_gate_decision(
+        request.url.path,
+        request.headers.get("Authorization"),
+        enabled=enabled,
+        expected_token=expected,
+    )
+    if status is not None:
+        return JSONResponse(status_code=status, content={"detail": message})
+    return await call_next(request)
+
 
 # --- Channel routers ---
 app.include_router(whatsapp.router)
