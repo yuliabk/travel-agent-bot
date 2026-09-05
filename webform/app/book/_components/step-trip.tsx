@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MapPin, Calendar, Users, Wallet, ArrowLeft, ArrowRight, Minus, Plus, Plane } from 'lucide-react'
 import { useState } from 'react'
+import { airports, airportCode } from '@/lib/airports'
 
 interface Props { form: FormData; updateForm: (partial: Partial<FormData>) => void; onNext: () => void; onBack: () => void }
 const popularDestinations = ['יוון','פריז','רומא','ברצלונה','לונדון','ניו יורק','אמסטרדם','סנטוריני','באלי','מלדיבים','טוקיו','דובאי','איסלנד','קרואטיה','פראג','קנקון']
@@ -23,6 +24,9 @@ export function StepTrip({ form, updateForm, onNext, onBack }: Props) {
     const errs: Record<string,string> = {}
     if (!(form.origin ?? '').trim()) errs.origin='נא הזינו נקודת מוצא'
     if (!(form.destination ?? '').trim()) errs.destination='נא הזינו יעד'
+    if (!airportCode(form.originAirport)) errs.originAirport='בחרו שדה המראה מהרשימה או הזינו קוד שדה בן 3 אותיות'
+    if (!airportCode(form.destinationAirport)) errs.destinationAirport='בחרו שדה נחיתה מהרשימה או הזינו קוד שדה בן 3 אותיות'
+    if (airportCode(form.originAirport) && airportCode(form.originAirport) === airportCode(form.destinationAirport)) errs.destinationAirport='שדה הנחיתה חייב להיות שונה משדה ההמראה'
     if (!form.dateFrom) errs.dateFrom='נא בחרו תאריך התחלה'
     if (!form.dateTo) errs.dateTo='נא בחרו תאריך סיום'
     if (form.dateFrom && form.dateTo && form.dateTo < form.dateFrom) errs.dateTo='תאריך החזרה חייב להיות לאחר תאריך היציאה'
@@ -33,6 +37,14 @@ export function StepTrip({ form, updateForm, onNext, onBack }: Props) {
   return <div className="space-y-6">
     <div className="text-center mb-2"><h2 className="font-display text-xl font-semibold">פרטי הטיול</h2><p className="text-sm text-muted-foreground">מאיפה יוצאים ולאן נוסעים?</p></div>
     <div className="space-y-4">
+      <datalist id="airport-options">{airports.map(([code, label]) => <option key={code} value={`${label} (${code})`} />)}</datalist>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {([['originAirport', 'שדה המראה'], ['destinationAirport', 'שדה נחיתה']] as const).map(([field, label]) => <div key={field}>
+          <Label htmlFor={field} className="mb-1.5 block">{label}</Label>
+          <Input id={field} list="airport-options" value={form[field]} onChange={(e) => updateForm({[field]: e.target.value})} placeholder="בחרו מהרשימה או הזינו קוד שדה" variant={errors[field] ? 'error' : 'default'} aria-invalid={Boolean(errors[field])} aria-describedby={errors[field] ? `${field}-error` : undefined} />
+          {errors[field] && <p id={`${field}-error`} className="text-destructive text-xs mt-1">{errors[field]}</p>}
+        </div>)}
+      </div>
       <div><Label htmlFor="origin" className="mb-1.5 block">נקודת מוצא</Label><div className="relative"><Plane className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/><Input id="origin" placeholder="לדוגמה: תל אביב, ישראל" value={form.origin} onChange={(e:any)=>updateForm({origin:e.target.value})} className="pr-10" variant={errors.origin?'error':'default'}/></div>{errors.origin&&<p className="text-destructive text-xs mt-1">{errors.origin}</p>}</div>
       <div className="relative"><Label htmlFor="destination" className="mb-1.5 block">יעד הנסיעה</Label><div className="relative"><MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/><Input id="destination" placeholder="לדוגמה: יוון, פריז, רומא..." value={form.destination} onChange={(e:any)=>{updateForm({destination:e.target.value});setShowSuggestions(true)}} onFocus={()=>setShowSuggestions(true)} onBlur={()=>setTimeout(()=>setShowSuggestions(false),200)} className="pr-10" variant={errors.destination?'error':'default'}/></div>{showSuggestions&&form.destination.length>0&&filteredDests.length>0&&<div className="absolute z-20 top-full mt-1 w-full bg-popover rounded-lg shadow-lg border border-border max-h-48 overflow-auto">{filteredDests.map((d)=><button key={d} type="button" className="w-full text-right px-4 py-2 text-sm hover:bg-muted" onMouseDown={()=>{updateForm({destination:d});setShowSuggestions(false)}}>{d}</button>)}</div>}{errors.destination&&<p className="text-destructive text-xs mt-1">{errors.destination}</p>}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
