@@ -30,6 +30,7 @@ class PlannerDay(BaseModel):
     suggested_places: List[str] = Field(default_factory=list)
     location: str = Field(default_factory=str, max_length=200)
     transport_notes: str = Field(default_factory=str, max_length=1500)
+    attractions: List[str] = Field(default_factory=list, max_length=8)
 
 
 class PlannerNarrative(BaseModel):
@@ -203,6 +204,7 @@ def build_proposal_draft(
         summary=summary,
         flight_options=flights,
         hotel_options=hotels,
+        attraction_options=[{**r.normalized_data, "searched_at": r.searched_at.isoformat()} for r in evidence_pack.records if r.type == EvidenceType.PLACE and r.normalized_data.get("kind") == "attraction"],
         restaurant_options=[{**r.normalized_data, "searched_at": r.searched_at.isoformat()} for r in evidence_pack.records if r.type == EvidenceType.PLACE and r.normalized_data.get("kind") == "restaurant"],
         daily_itinerary=daily_itinerary,
         estimated_total=[],
@@ -239,6 +241,7 @@ class GeminiPlannerV1:
             "Do not recommend an alternative airport solely on flight price or straight-line distance: ground time and cost are unresolved. "
             "Compare whole-trip public transport for all travelers with rental period plus fuel, insurance, parking, tolls, child seats and one-way fees. "
             "Never add mutually exclusive modes together; for mixed transport allocate each mode to distinct legs/days. "
+            "List each day's attractions in the attractions field, using their official local names for lookup. Include museums, monuments, parks and activities whose admission cost needs checking, but exclude restaurants, streets and transit stops. Do not assume admission is free. "
             "Include a meal stop each day, using supplied restaurant candidates in that city when available. Respect dietary notes but never claim allergy safety, kosher certification or menu prices without verification. Do not invent restaurant names if none are supplied; suggest an area for eating instead. "
             "Set each day's location to its actual city and country for map search. For transfer days include city in each place name too. "
             "Prefer nearby indoor alternatives in winter; do not assume seasonal attractions or mountain routes are open. "
