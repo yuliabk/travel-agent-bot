@@ -21,3 +21,60 @@ export function airportCode(value: unknown): string | null {
   const airport = airports.find(([code, label]) => `${label} (${code})`.toUpperCase() === normalized)
   return airport?.[0] ?? null
 }
+
+type Destination = { names: string[]; codes: string[]; automatic: boolean }
+const destinations: Destination[] = [
+  { names: ['רומא', 'rome', 'roma'], codes: ['FCO'], automatic: true },
+  { names: ['פריז', 'paris'], codes: ['CDG', 'ORY'], automatic: true },
+  { names: ['לונדון', 'london'], codes: ['LHR', 'LGW'], automatic: true },
+  { names: ['ניו יורק', 'new york', 'nyc'], codes: ['JFK', 'EWR'], automatic: true },
+  { names: ['טוקיו', 'tokyo'], codes: ['HND', 'NRT'], automatic: true },
+  { names: ['אתונה', 'athens'], codes: ['ATH'], automatic: true },
+  { names: ['סנטוריני', 'santorini'], codes: ['JTR'], automatic: true },
+  { names: ['הרקליון', 'heraklion'], codes: ['HER'], automatic: true },
+  { names: ['רודוס', 'rhodes'], codes: ['RHO'], automatic: true },
+  { names: ['מילאנו', 'milan', 'milano'], codes: ['MXP'], automatic: true },
+  { names: ['ברצלונה', 'barcelona'], codes: ['BCN'], automatic: true },
+  { names: ['מדריד', 'madrid'], codes: ['MAD'], automatic: true },
+  { names: ['אמסטרדם', 'amsterdam'], codes: ['AMS'], automatic: true },
+  { names: ['באלי', 'bali', 'דנפסאר', 'denpasar'], codes: ['DPS'], automatic: true },
+  { names: ['מלדיבים', 'האיים המלדיביים', 'maldives', 'מאלה', 'male'], codes: ['MLE'], automatic: true },
+  { names: ['דובאי', 'dubai'], codes: ['DXB'], automatic: true },
+  { names: ['קפלאוויק', 'keflavik', 'רייקיאוויק', 'reykjavik'], codes: ['KEF'], automatic: true },
+  { names: ['זאגרב', 'zagreb'], codes: ['ZAG'], automatic: true },
+  { names: ['דוברובניק', 'dubrovnik'], codes: ['DBV'], automatic: true },
+  { names: ['פראג', 'prague', 'praha'], codes: ['PRG'], automatic: true },
+  { names: ['קנקון', 'cancun'], codes: ['CUN'], automatic: true },
+  { names: ['בנגקוק', 'bangkok'], codes: ['BKK'], automatic: true },
+  { names: ['פוקט', 'phuket'], codes: ['HKT'], automatic: true },
+  { names: ['לרנקה', 'larnaca'], codes: ['LCA'], automatic: true },
+  { names: ['פאפוס', 'paphos'], codes: ['PFO'], automatic: true },
+  { names: ['וינה', 'vienna'], codes: ['VIE'], automatic: true },
+  { names: ['בודפשט', 'budapest'], codes: ['BUD'], automatic: true },
+  { names: ['תל אביב', 'tel aviv'], codes: ['TLV'], automatic: true },
+  { names: ['אילת', 'eilat'], codes: ['ETM'], automatic: true },
+  { names: ['יוון', 'greece'], codes: ['ATH', 'JTR', 'HER', 'RHO'], automatic: false },
+  { names: ['קרואטיה', 'croatia'], codes: ['ZAG', 'DBV'], automatic: false },
+  { names: ['קפריסין', 'cyprus'], codes: ['LCA', 'PFO'], automatic: false },
+]
+
+const normalizeDestination = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+
+export function destinationMatch(value: unknown): Destination | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = normalizeDestination(value)
+  return destinations.find((destination) => destination.names.includes(normalized))
+}
+
+export function destinationAirportCode(destination: unknown, selected?: unknown): string | null {
+  const match = destinationMatch(destination)
+  const explicit = airportCode(selected)
+  if (!match) return explicit
+  if (explicit && match.codes.includes(explicit)) return explicit
+  return match.automatic ? match.codes[0] : null
+}
+
+export function airportLabel(code: string): string {
+  const entry = airports.find(([iata]) => iata === code)
+  return entry ? `${entry[1]} (${code})` : code
+}
