@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from src.contracts.travel_v1 import EvidencePack, ProposalDraft
 from src.intake.abacus_webform_v1 import AbacusWebFormPayload, CanonicalCompletion, migrate_abacus_payload
 from src.runtime.planner_v1 import build_proposal_draft
+from src.runtime.provider_diagnostics import log_provider_failure
 from src.runtime.renderer_v1 import render_ai_draft_hebrew
 
 
@@ -43,6 +44,13 @@ def run_web_draft_workflow(
         )
 
     request = migration.canonical_request
+    if evidence_searcher is not None and (not origin_iata or not destination_iata):
+        return WebDraftWorkflowResult(
+            status="NEEDS_INFORMATION",
+            missing_fields=[name for name, value in (
+                ("origin_iata", origin_iata), ("destination_iata", destination_iata)
+            ) if not value],
+        )
     pack = EvidencePack(request_id=request.request_id)
     workflow_warnings: List[str] = []
 
@@ -53,7 +61,8 @@ def run_web_draft_workflow(
                 origin_iata=origin_iata,
                 destination_iata=destination_iata,
             )
-        except Exception:
+        except Exception as exc:
+            log_provider_failure("serpapi", exc, request_id=request.request_id)
             workflow_warnings.append("Live commercial evidence search failed; commercial results may be incomplete.")
     else:
         workflow_warnings.append("Live commercial evidence search was not executed.")
@@ -62,7 +71,8 @@ def run_web_draft_workflow(
     if planner is not None:
         try:
             narrative = planner.generate_narrative(request, pack)
-        except Exception:
+        except Exception as exc:
+            log_provider_failure("gemini", exc, request_id=request.request_id, model=model_version)
             workflow_warnings.append("Planner model failed; returning an evidence-only partial draft.")
 
     proposal = build_proposal_draft(
