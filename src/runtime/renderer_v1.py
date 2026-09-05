@@ -82,10 +82,24 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
         airline = legs[0].get('airline') if legs else 'טיסה'
         code = flight.get('arrival_iata') or ''
         exceeds = flight.get('currency') == request.currency and amount(flight.get('amount')) is not None and amount(flight.get('amount')) > request.budget
-        return f"- **{clean(airline or 'טיסה')}:** {money(flight.get('amount'), flight.get('currency'))} — נחיתה ב־{code}. יש לאשר הלוך וחזור, מספר נוסעים וכבודה." + (' מחיר הטיסה לבדו חורג מהתקציב שהוגדר.' if exceeds else '')
+        route = ' → '.join(str((leg.get('departure_airport') or {}).get('id') or '?') for leg in legs)
+        if legs:
+            route += ' → ' + str((legs[-1].get('arrival_airport') or {}).get('id') or code)
+        departure = (legs[0].get('departure_airport') or {}).get('time') if legs else None
+        arrival = (legs[-1].get('arrival_airport') or {}).get('time') if legs else None
+        details = f" מסלול ההלוך שהתקבל: {route}." if legs else ''
+        if departure and arrival:
+            details += f" יציאה: {departure}; הגעה: {arrival} (זמנים מקומיים)."
+        return f"- **{clean(airline or 'טיסה')}:** {money(flight.get('amount'), flight.get('currency'))} — נחיתה ב־{code}." + details + ' המחיר מחיפוש הלוך־חזור; בחירת טיסת החזרה ואישור מחיר לכל הנוסעים והכבודה עדיין נדרשים.' + (' מחיר הטיסה לבדו חורג מהתקציב שהוגדר.' if exceeds else '')
+
     lines += [flight_line(flight) for flight in primary[:3]]
     if not primary:
-        lines.append('לא התקבל מחיר טיסה מאומת לפי הבקשה המקורית.')
+        blocked = any('(429)' in note for note in proposal.warnings)
+        lines.append('חיפוש הטיסות לא הושלם בגלל חסימת בקשות אצל ספק החיפוש. זו אינה הודעה שאין טיסות.' if blocked else 'לא התקבל מחיר טיסה מאומת לפי הבקשה המקורית. להלן מצב חיפוש החלופות.')
+    flight_notes = [note for note in proposal.warnings if 'נבדק' in note or '(429)' in note or 'שדה חלופי' in note]
+    if flight_notes:
+        lines += [''] + ['- ' + note for note in flight_notes]
+
     if alternatives:
         lines += ['', '## חלופות טיסה לבחירתכם', 'אלה הצעות נוספות בלבד. שדה הנחיתה שבחרתם ומקומות הלינה לא השתנו.']
         seen = set()
@@ -112,7 +126,21 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
               '| אוכל, תחבורה, אטרקציות וביטוח | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',
               '**הסכום הידוע הוא ללינה בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
+    lines += ['## מסעדות ומחירי אוכל', 'המחירים הבאים הם טווח או רמת מחיר שפורסמו במפות Google בזמן החיפוש, ולא מחיר מובטח לארוחה בתאריכי הטיול. יש לבדוק תפריט עדכני, כשרות ואלרגנים מול המסעדה.']
+    if proposal.restaurant_options:
+        for city in dict.fromkeys(item.get('city') for item in proposal.restaurant_options):
+            lines += [f'### מסעדות: {destination_label(city)}', '| מסעדה | אזור / כתובת | טווח מחיר שפורסם |', '| --- | --- | --- |']
+            for item in proposal.restaurant_options:
+                if item.get('city') != city:
+                    continue
+                price = str(item.get('price_label') or 'לא פורסם מחיר — יש לבדוק תפריט')
+                levels = {'$': 'רמת מחיר נמוכה ($), ללא סכום', '$$': 'רמת מחיר בינונית ($$), ללא סכום', '$$$': 'רמת מחיר גבוהה ($$$), ללא סכום', '$$$$': 'רמת מחיר גבוהה מאוד ($$$$), ללא סכום'}
+                lines.append(f"| [[{clean(item.get('name'))}, {clean(city)}]] | {clean(item.get('address'))} | {clean(levels.get(price, price))} |")
+            lines.append('')
+    else:
+        lines += ['לא התקבלו כרגע מסעדות ומחירים מהספק. עלות האוכל עדיין חסרה בתקציב; אין כאן הערכת מחיר מומצאת.', '']
     if proposal.daily_itinerary:
+
         lines.append('## המסלול היומי והמפה')
         for day in proposal.daily_itinerary:
             lines += [f"### יום {day.get('day_number', '')}: {day.get('title', '')}", f"**מיקום ליום:** {day.get('location') or request.destination}", str(day.get('summary') or '')]
