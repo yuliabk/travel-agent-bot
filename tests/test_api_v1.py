@@ -53,12 +53,22 @@ def evidence_for(req):
     return EvidencePack(request_id=req.request_id, records=[record]), record
 
 
-def test_contract_endpoint_reports_no_external_side_effects():
+def test_contract_endpoint_reports_no_external_side_effects(monkeypatch):
+    monkeypatch.delenv("V1_LIVE_SEARCH_ENABLED", raising=False)
     with client() as c:
         response = c.get("/v1/contract")
     assert response.status_code == 200
     assert response.json()["schema_version"] == "1.0.0"
     assert response.json()["external_side_effects"] is False
+    assert response.json()["live_search_enabled"] is False
+
+
+def test_contract_reports_live_search_feature_flag(monkeypatch):
+    monkeypatch.setenv("V1_LIVE_SEARCH_ENABLED", "true")
+    with client() as c:
+        response = c.get("/v1/contract")
+    assert response.status_code == 200
+    assert response.json()["live_search_enabled"] is True
 
 
 def test_abacus_normalize_returns_explicit_gaps():
@@ -80,6 +90,19 @@ def test_abacus_normalize_returns_explicit_gaps():
     body = response.json()
     assert body["status"] == "NEEDS_INFORMATION"
     assert set(body["missing_fields"]) == {"origin", "budget", "currency", "consent_status"}
+
+
+def test_live_evidence_search_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("V1_LIVE_SEARCH_ENABLED", raising=False)
+    req = trip_request()
+    body = {
+        "trip_request": req.model_dump(mode="json"),
+        "origin_iata": "TLV",
+        "destination_iata": "FCO",
+    }
+    with client() as c:
+        response = c.post("/v1/evidence/search", json=body)
+    assert response.status_code == 503
 
 
 def test_approval_is_disabled_without_owner_token(monkeypatch):
