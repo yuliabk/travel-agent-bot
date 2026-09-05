@@ -9,6 +9,7 @@ from __future__ import annotations
 import hmac
 import os
 import math
+import re
 from concurrent.futures import ThreadPoolExecutor
 import requests
 from typing import List, Literal, Optional
@@ -96,8 +97,11 @@ def map_points(req: MapPointsRequest):
 
     def locate(name):
         try:
+            # Prefer the official local name inside a bilingual display label.
+            local_names = re.findall(r"\(([^()]*[A-Za-z][^()]*)\)", name)
+            query_name = local_names[-1] if local_names else name
             response = requests.get("https://serpapi.com/search.json", params={
-                "engine": "google_maps", "q": f"{name}, {req.destination}",
+                "engine": "google_maps", "q": f"{query_name}, {req.destination}",
                 "hl": "iw", "api_key": config.SERPAPI_KEY,
             }, timeout=(3, 5))
             response.raise_for_status()
