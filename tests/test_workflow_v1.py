@@ -74,8 +74,8 @@ def test_no_live_dependencies_returns_partial_draft_not_failure():
     assert result.status == "PARTIAL_DRAFT"
     assert result.proposal is not None
     assert result.proposal.missing_information == ["itinerary_narrative"]
-    assert "טיוטת AI" in result.rendered_draft
-    assert "אין כרגע מחיר טיסה מאומת" in result.rendered_draft
+    assert "תוכנית ראשונית" in result.rendered_draft
+    assert "לא נמצא מחיר טיסה מאומת" in result.rendered_draft
 
 
 def test_complete_workflow_returns_traceable_ai_draft():
@@ -92,9 +92,9 @@ def test_complete_workflow_returns_traceable_ai_draft():
     assert result.proposal is not None
     assert result.proposal.flight_options[0]["amount"] == "450"
     assert result.proposal.flight_options[0]["provider_reference"] == "flight-ref"
-    assert "Evidence:" in result.rendered_draft
+    assert "Evidence:" not in result.rendered_draft
     assert "[[Colosseum]]" in result.rendered_draft
-    assert "נדרש אישור סוכן" in result.rendered_draft
+    assert "אישור סוכן נסיעות" in result.rendered_draft
 
 
 def test_search_failure_degrades_to_partial_draft():
