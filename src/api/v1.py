@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import hmac
 import os
+import math
+from concurrent.futures import ThreadPoolExecutor
+import requests
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -76,6 +79,41 @@ class WebDraftRequest(BaseModel):
     completion: Optional[CanonicalCompletion] = None
     origin_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
     destination_iata: Optional[str] = Field(default=None, min_length=3, max_length=3)
+
+
+class MapPointsRequest(BaseModel):
+    destination: str = Field(default="", max_length=200)
+    places: List[str] = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/web/map-points")
+def map_points(req: MapPointsRequest):
+    if not config.SERPAPI_KEY:
+        raise HTTPException(status_code=503, detail="Map service unavailable")
+    names = list(dict.fromkeys(name.strip() for name in req.places if name.strip()))
+    if any(len(name) > 300 for name in names):
+        raise HTTPException(status_code=422, detail="Place name too long")
+
+    def locate(name):
+        try:
+            response = requests.get("https://serpapi.com/search.json", params={
+                "engine": "google_maps", "q": f"{name}, {req.destination}",
+                "hl": "iw", "api_key": config.SERPAPI_KEY,
+            }, timeout=(3, 5))
+            response.raise_for_status()
+            data = response.json()
+            place = data.get("place_results") or next(iter(data.get("local_results") or []), {})
+            gps = place.get("gps_coordinates") or {}
+            lat, lng = gps.get("latitude"), gps.get("longitude")
+            if all(type(n) in (int, float) and math.isfinite(n) for n in (lat, lng)) and -90 <= lat <= 90 and -180 <= lng <= 180:
+                return {"name": name, "lat": lat, "lng": lng}
+        except Exception as exc:
+            log_provider_failure("map_geocoding", exc)
+        return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(locate, names))
+    return {"points": [point for point in results if point], "missing": [name for name, point in zip(names, results) if not point]}
 
 
 class EvidenceSearchRequest(BaseModel):
