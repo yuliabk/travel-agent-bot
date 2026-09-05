@@ -10,3 +10,6 @@ extend-exclude = '''
   | logs
 )/
 '''
+
+[tool.vercel]
+entrypoint = "vercel_api:app"
