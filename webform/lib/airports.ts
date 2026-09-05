@@ -12,6 +12,7 @@ export const airports = [
   ['ZAG', 'זאגרב'], ['DBV', 'דוברובניק'], ['PRG', 'פראג'],
   ['CUN', 'קנקון'], ['BKK', 'בנגקוק'], ['HKT', 'פוקט'],
   ['LCA', 'לרנקה'], ['PFO', 'פאפוס'], ['VIE', 'וינה'], ['BUD', 'בודפשט'],
+  ['WRO', 'ורוצלב — קופרניקוס'],
 ] as const
 
 export function airportCode(value: unknown): string | null {
@@ -22,8 +23,9 @@ export function airportCode(value: unknown): string | null {
   return airport?.[0] ?? null
 }
 
-type Destination = { names: string[]; codes: string[]; automatic: boolean }
+type Destination = { names: string[]; codes: string[]; automatic: boolean; countries?: string[] }
 const destinations: Destination[] = [
+  { names: ['ורוצלב', 'וורוצלב', 'ורוצלאב', 'וורוצלאב', 'וורצלוב', 'ורצלוב', 'ורוצלוב', 'וורוצלוב', 'וורצלב', 'wroclaw', 'breslau'], countries: ['פולין', 'poland', 'polska'], codes: ['WRO'], automatic: true },
   { names: ['רומא', 'rome', 'roma'], codes: ['FCO'], automatic: true },
   { names: ['פריז', 'paris'], codes: ['CDG', 'ORY'], automatic: true },
   { names: ['לונדון', 'london'], codes: ['LHR', 'LGW'], automatic: true },
@@ -58,12 +60,16 @@ const destinations: Destination[] = [
   { names: ['קפריסין', 'cyprus'], codes: ['LCA', 'PFO'], automatic: false },
 ]
 
-const normalizeDestination = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+const normalizeDestination = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[,()–—-]/g, ' ').replace(/\s+/g, ' ').trim()
 
 export function destinationMatch(value: unknown): Destination | undefined {
   if (typeof value !== 'string') return undefined
   const normalized = normalizeDestination(value)
-  return destinations.find((destination) => destination.names.includes(normalized))
+  return destinations.find((destination) => destination.names.some((name) =>
+    name === normalized || destination.countries?.some((country) =>
+      normalized === `${name} ${country}` || normalized === `${country} ${name}`
+    )
+  ))
 }
 
 export function destinationAirportCode(destination: unknown, selected?: unknown): string | null {
