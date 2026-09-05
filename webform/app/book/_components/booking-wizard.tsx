@@ -19,6 +19,9 @@ export interface FormData {
   destination: string
   originAirport: string
   destinationAirport: string
+  landingAirportManual?: boolean
+  alternativeAirports?: string
+  stays?: { destination: string; checkIn: string; checkOut: string }[]
   dateFrom: string
   dateTo: string
   adults: number
@@ -40,6 +43,9 @@ const defaultForm: FormData = {
   destination: '',
   originAirport: '',
   destinationAirport: '',
+  landingAirportManual: false,
+  alternativeAirports: '',
+  stays: [],
   dateFrom: '',
   dateTo: '',
   adults: 2,
@@ -64,7 +70,7 @@ export function BookingWizard() {
 
   const updateForm = (partial: Partial<FormData>) => {
     setForm((prev: FormData) => ({ ...prev, ...partial,
-      ...(partial.destination !== undefined && partial.destination !== prev.destination
+      ...(partial.destination !== undefined && partial.destination !== prev.destination && !prev.landingAirportManual && partial.destinationAirport === undefined
         ? { destinationAirport: destinationAirportCode(partial.destination) ?? '' } : {}),
     }))
   }
