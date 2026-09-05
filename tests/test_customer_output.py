@@ -52,8 +52,9 @@ def test_map_reuses_backend_key_and_reports_missing(monkeypatch):
             raise RuntimeError('no result')
         return Reply()
     monkeypatch.setattr(v1.requests, 'get', get)
-    result = map_points(MapPointsRequest(destination='Wroclaw, Poland', places=['Rynek', 'Rynek', 'Missing']))
+    result = map_points(MapPointsRequest(destination='Wroclaw, Poland', places=['כיכר השוק (Rynek)', 'כיכר השוק (Rynek)', 'Missing']))
     assert len(result['points']) == 1 and result['missing'] == ['Missing']
+    assert calls[0]['params']['q'] == 'Rynek, Wroclaw, Poland'
     assert all(call['params']['api_key'] == 'fixture' and call['timeout'] == (3, 5) for call in calls)
     assert webform_gate_decision('/v1/web/map-points', None, enabled=True, expected_token='fixture')[0] == 401
 
