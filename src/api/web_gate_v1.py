@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 PROTECTED_WEB_PATHS = frozenset({
     "/v1/web/draft",
+    "/v1/web/map-points",
     "/v1/intake/abacus/normalize",
 })
 
