@@ -38,6 +38,8 @@ jobs:
           tests/test_research_lookup_consumer_v1.py
           tests/test_flight_search_consumer_v1.py
           tests/test_deployed_flight_runtime_v1.py
+          tests/test_manual_channel_flight_capability.py
+          tests/test_agent.py
           tests/test_workflow_v1.py
           tests/test_planner_v1.py
           tests/test_api_v1.py
