@@ -20,7 +20,9 @@ from src.contracts.travel_v1 import (
     TripPreferences,
     TripRequest,
 )
+from src.intake.abacus_webform_v1 import AbacusWebFormPayload, CanonicalCompletion
 from src.runtime.planner_v1 import build_planning_context
+from src.runtime.workflow_v1 import run_web_draft_workflow
 
 
 class FakeCapabilityInvoker:
@@ -70,6 +72,32 @@ def trip_request():
             preferred_areas=["historic center"],
             constraints=["near public transport"],
         ),
+        consent_status=ConsentStatus.GRANTED,
+    )
+
+
+def web_payload():
+    return AbacusWebFormPayload(
+        name="Private Customer",
+        email="private@example.com",
+        phone="0501234567",
+        destination="Rome",
+        dateFrom="2026-10-10",
+        dateTo="2026-10-15",
+        adults=2,
+        children=0,
+        budget="בינוני",
+        flightStops="nonstop",
+        travelStyles=["culture", "food"],
+        specialRequests="Near public transport",
+    )
+
+
+def web_completion():
+    return CanonicalCompletion(
+        origin="Tel Aviv",
+        budget_amount=Decimal("6000"),
+        currency="ILS",
         consent_status=ConsentStatus.GRANTED,
     )
 
@@ -132,3 +160,38 @@ def test_planner_context_separates_background_from_commercial_evidence():
     assert context["research_background"][0]["title"] == "Rome"
     assert context["research_background"][0]["source_ref"] == "https://en.wikipedia.org/wiki/Rome"
     assert context["policy"]["research_background_is_non_commercial_context"] is True
+
+
+def test_workflow_adds_research_background_without_making_it_commercial():
+    invoker = FakeCapabilityInvoker()
+    consumer = ResearchLookupConsumerV1(invoker)
+
+    result = run_web_draft_workflow(
+        web_payload(),
+        web_completion(),
+        research_lookup=consumer,
+    )
+
+    research_records = [
+        record for record in result.evidence_pack.records if record.provider == RESEARCH_LOOKUP_REF
+    ]
+    assert len(research_records) == 1
+    assert research_records[0].type == EvidenceType.PLACE
+    assert research_records[0].is_verified_price is False
+    assert result.proposal.flight_options == []
+    assert result.proposal.hotel_options == []
+
+
+def test_research_failure_degrades_without_stopping_travel_draft():
+    class BrokenResearch:
+        def search_background(self, request):
+            raise RuntimeError("capability unavailable")
+
+    result = run_web_draft_workflow(
+        web_payload(),
+        web_completion(),
+        research_lookup=BrokenResearch(),
+    )
+
+    assert result.status == "PARTIAL_DRAFT"
+    assert any("background research capability failed" in warning.lower() for warning in result.proposal.warnings)
