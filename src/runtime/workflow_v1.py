@@ -27,13 +27,16 @@ def run_web_draft_workflow(
     origin_iata: Optional[str] = None,
     destination_iata: Optional[str] = None,
     evidence_searcher: Optional[Any] = None,
+    research_lookup: Optional[Any] = None,
     planner: Optional[Any] = None,
     model_version: str = "planner-disabled",
 ) -> WebDraftWorkflowResult:
-    """Run intake -> optional evidence -> optional narrative -> render.
+    """Run intake -> commercial evidence -> optional research -> narrative -> render.
 
     Dependencies are injected so tests never require network/model calls.
     Missing dependencies yield an explicit partial draft rather than invented data.
+    Research background is non-commercial evidence and never replaces verified
+    flight/hotel provider evidence.
     """
     migration = migrate_abacus_payload(payload, completion)
     if not migration.is_complete or migration.canonical_request is None:
@@ -57,6 +60,12 @@ def run_web_draft_workflow(
             workflow_warnings.append("Live commercial evidence search failed; commercial results may be incomplete.")
     else:
         workflow_warnings.append("Live commercial evidence search was not executed.")
+
+    if research_lookup is not None:
+        try:
+            pack.records.extend(research_lookup.search_background(request))
+        except Exception:
+            workflow_warnings.append("Background research capability failed; itinerary context may be incomplete.")
 
     narrative = None
     if planner is not None:
