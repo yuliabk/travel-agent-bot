@@ -65,7 +65,7 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
             if option.get("price_status") == "observed":
                 lines.append("  - ⚠️ יש לאמת מחיר וזמינות לפני הזמנה או כרטוס.")
     else:
-        lines.append("- אין כרגע אפשרות טיסה מאומתת או נצפית להצגה.")
+        lines.append("- אין כרגע מחיר טיסה מאומת או אפשרות טיסה נצפית להצגה.")
     lines.append("")
 
     lines.append("## 🏨 אפשרויות מלון מבוססות Evidence")
