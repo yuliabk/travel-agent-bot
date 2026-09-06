@@ -1,0 +1,41 @@
+name: Contract v1 CI
+
+on:
+  pull_request:
+    paths:
+      - 'agent-factory/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - '.github/workflows/contract-v1-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'agent-factory/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - '.github/workflows/contract-v1-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract-v1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run research consumer and Contract v1 regressions
+        run: >-
+          python -m pytest -q
+          tests/test_research_lookup_consumer_v1.py
+          tests/test_workflow_v1.py
+          tests/test_planner_v1.py
+          tests/test_api_v1.py
