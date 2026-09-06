@@ -1,0 +1,34 @@
+{
+  "apiVersion": "agentfactory.io/v1alpha1",
+  "kind": "AgentManifest",
+  "metadata": {
+    "name": "travel-agent-sandbox",
+    "version": "1.1.0",
+    "description": "Sandbox Travel Agent consuming governed research.lookup@1 and travel.flight.search@1 capabilities."
+  },
+  "spec": {
+    "template": {"name": "general-agent", "version": 1},
+    "capabilities": {
+      "provides": [],
+      "requires": [
+        {
+          "ref": "research.lookup",
+          "version": "1",
+          "optional": true,
+          "overrides": {"qualityProfile": "balanced"}
+        },
+        {
+          "ref": "travel.flight.search",
+          "version": "1",
+          "optional": false,
+          "overrides": {}
+        }
+      ]
+    },
+    "tools": {"required": []},
+    "permissions": {"requested": ["research.lookup", "travel.flight.search"]},
+    "memoryProfile": "session-only",
+    "budgetProfile": "balanced",
+    "evalProfile": "travel-agent-v1"
+  }
+}
