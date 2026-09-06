@@ -134,7 +134,10 @@ def normalize_hotels_response(data: Dict[str, Any]) -> List[EvidenceRecord]:
         provider_ref = None
         if search_id:
             provider_ref = f"serpapi:{search_id}:hotel:{hotel_id or index}"
-        price = _decimal_price((hotel.get("rate_per_night") or {}).get("lowest"))
+        nightly = hotel.get("rate_per_night") or {}
+        price = _decimal_price(nightly.get("extracted_lowest", nightly.get("lowest")))
+        total = hotel.get("total_rate") or {}
+        stay_total = _decimal_price(total.get("extracted_lowest", total.get("lowest")))
         missing = _missing(
             ("price", price),
             ("currency", currency),
@@ -168,6 +171,7 @@ def normalize_hotels_response(data: Dict[str, Any]) -> List[EvidenceRecord]:
                     "hotel_class": hotel.get("extracted_hotel_class") or hotel.get("hotel_class"),
                     "overall_rating": hotel.get("overall_rating"),
                     "price_basis": "per_night",
+                    "stay_total": str(stay_total) if stay_total is not None and stay_total.is_finite() and stay_total >= 0 else None,
                     "source_prices": source_prices,
                 },
             )

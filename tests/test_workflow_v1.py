@@ -74,8 +74,8 @@ def test_no_live_dependencies_returns_partial_draft_not_failure():
     assert result.status == "PARTIAL_DRAFT"
     assert result.proposal is not None
     assert result.proposal.missing_information == ["itinerary_narrative"]
-    assert "טיוטת AI" in result.rendered_draft
-    assert "אין כרגע מחיר טיסה מאומת" in result.rendered_draft
+    assert "תוכנית ראשונית" in result.rendered_draft
+    assert "לא נמצא מחיר טיסה מאומת" in result.rendered_draft
 
 
 def test_complete_workflow_returns_traceable_ai_draft():
@@ -92,9 +92,9 @@ def test_complete_workflow_returns_traceable_ai_draft():
     assert result.proposal is not None
     assert result.proposal.flight_options[0]["amount"] == "450"
     assert result.proposal.flight_options[0]["provider_reference"] == "flight-ref"
-    assert "Evidence:" in result.rendered_draft
+    assert "Evidence:" not in result.rendered_draft
     assert "[[Colosseum]]" in result.rendered_draft
-    assert "נדרש אישור סוכן" in result.rendered_draft
+    assert "אישור סוכן נסיעות" in result.rendered_draft
 
 
 def test_search_failure_degrades_to_partial_draft():
@@ -119,3 +119,35 @@ def test_renderer_does_not_echo_customer_pii():
     assert "Private Customer" not in text
     assert "private@example.com" not in text
     assert "0501234567" not in text
+
+
+def test_enabled_search_requires_airports_before_calling_providers():
+    class MustNotCall:
+        def search_evidence(self, *args, **kwargs):
+            raise AssertionError("missing airports must stop search")
+        def generate_narrative(self, *args, **kwargs):
+            raise AssertionError("missing airports must stop planning")
+    for origin, destination, missing in (
+        (None, None, ["origin_iata", "destination_iata"]),
+        ("TLV", None, ["destination_iata"]),
+        (None, "FCO", ["origin_iata"]),
+    ):
+        result = run_web_draft_workflow(
+            payload(), completion(), origin_iata=origin, destination_iata=destination,
+            evidence_searcher=MustNotCall(), planner=MustNotCall(),
+        )
+        assert result.status == "NEEDS_INFORMATION"
+        assert result.missing_fields == missing
+        assert result.proposal is None
+
+
+def test_planner_failure_logs_reason_without_raw_error(caplog):
+    class BrokenPlanner:
+        def generate_narrative(self, *args):
+            raise RuntimeError("API key expired: SECRET_VALUE private@example.com")
+    result = run_web_draft_workflow(payload(), completion(), planner=BrokenPlanner(), model_version="test-model")
+    assert result.status == "PARTIAL_DRAFT"
+    assert "reason=api_key_expired" in caplog.text
+    assert "SECRET_VALUE" not in caplog.text
+    assert "private@example.com" not in caplog.text
+    assert "SECRET_VALUE" not in result.model_dump_json()
