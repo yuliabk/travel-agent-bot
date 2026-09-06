@@ -1,0 +1,28 @@
+{
+  "apiVersion": "agentfactory.io/v1alpha1",
+  "kind": "AgentManifest",
+  "metadata": {
+    "name": "travel-agent-research-consumer",
+    "version": "1.0.0",
+    "description": "Sandbox Travel Agent slice consuming governed research.lookup@1 background research."
+  },
+  "spec": {
+    "template": {"name": "general-agent", "version": 1},
+    "capabilities": {
+      "provides": [],
+      "requires": [
+        {
+          "ref": "research.lookup",
+          "version": "1",
+          "optional": true,
+          "overrides": {"qualityProfile": "balanced"}
+        }
+      ]
+    },
+    "tools": {"required": []},
+    "permissions": {"requested": ["research.lookup"]},
+    "memoryProfile": "session-only",
+    "budgetProfile": "balanced",
+    "evalProfile": "travel-agent-v1"
+  }
+}
