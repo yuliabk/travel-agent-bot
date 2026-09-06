@@ -1,10 +1,11 @@
 """
-External travel tools: flight/hotel search via SerpApi and PDF generation.
+External travel tools and PDF generation.
 
-Extracted from the original monolithic ``main.py`` so every channel shares the
-exact same logic through the agent core. All network calls are defensive: a
-failure returns an empty result instead of raising, so a single flaky upstream
-never crashes a whole request.
+Flight search keeps the historical ``search_flights_google`` function name as a
+compatibility shim for existing channel code, but the implementation now routes
+through the canonical provider-neutral ``travel.flight.search@1`` sandbox
+capability. Hotel search remains on the legacy SerpApi path until a dedicated
+``travel.hotel.search@1`` capability is introduced.
 """
 
 import io
@@ -41,45 +42,63 @@ def get_iata_code(ai_client, city_or_country: str) -> str:
         return config.DEFAULT_ORIGIN_IATA
 
 
-def search_flights_google(origin: str, destination: str, departure_date: str, adults: int = 1) -> List[dict]:
-    if not config.SERPAPI_KEY:
-        logger.info("SERPAPI key missing - skipping flight search")
-        return []
-    params = {
-        "engine": "google_flights",
-        "departure_id": origin,
-        "arrival_id": destination,
-        "outbound_date": departure_date,
-        "currency": "USD",
-        "hl": "en",
-        "adults": adults,
-        "type": 2,  # one-way; avoids SerpApi requiring a return date
-        "api_key": config.SERPAPI_KEY,
-    }
+def search_flights_google(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    adults: int = 1,
+    *,
+    return_date: Optional[str] = None,
+    children: int = 0,
+    currency: str = "USD",
+) -> List[dict]:
+    """Compatibility shim backed by canonical ``travel.flight.search@1``.
+
+    Existing WhatsApp/email/webform code still calls this historical function
+    name. Provider selection is no longer made here: the temporary deployed
+    sandbox runtime implements only the canonical capability contract and all
+    returned offers remain observed/non-booking-ready evidence.
+    """
     try:
-        response = requests.get(SERPAPI_URL, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        flight_options = data.get("best_flights", []) or data.get("other_flights", [])
-        parsed = []
-        for flight in flight_options[:3]:
-            legs = flight.get("flights", [])
-            if not legs:
-                continue
-            stops = len(legs) - 1
+        from src.runtime.flight_capability_runtime_v1 import SandboxFlightCapabilityInvokerV1
+
+        trip_type = "round-trip" if return_date else "one-way"
+        result = SandboxFlightCapabilityInvokerV1().invoke(
+            "travel.flight.search",
+            {
+                "originIata": (origin or "").strip().upper(),
+                "destinationIata": (destination or "").strip().upper(),
+                "departureDate": departure_date,
+                "returnDate": return_date,
+                "tripType": trip_type,
+                "adults": adults,
+                "children": children,
+                "cabin": "economy",
+                "currency": currency,
+                "maxStops": 1,
+                "maxResults": 3,
+            },
+        )
+
+        parsed: List[dict] = []
+        for option in result.get("options", [])[:3]:
+            stops = int(option.get("stops", 0) or 0)
             stops_text = "טיסה ישירה" if stops == 0 else f"{stops} עצירות"
+            price = option.get("price") or {}
             parsed.append(
                 {
-                    "airline": legs[0].get("airline", "חברת תעופה"),
-                    "price": f"${flight.get('price', 'N/A')}",
-                    "departure_time": legs[0].get("departure_airport", {}).get("time", ""),
-                    "arrival_time": legs[-1].get("arrival_airport", {}).get("time", ""),
+                    "airline": option.get("carrierText") or "חברת תעופה",
+                    "price": price.get("displayText") or "מחיר לא זמין",
+                    "departure_time": option.get("departureText") or "",
+                    "arrival_time": option.get("arrivalText") or "",
                     "type": stops_text,
+                    "booking_ready": bool(option.get("bookingReady", False)),
+                    "evidence_status": option.get("evidenceStatus", "observed"),
                 }
             )
         return parsed
     except Exception as exc:
-        logger.error("Google Flights search failed: %s", exc)
+        logger.error("Governed flight capability search failed: %s", exc)
         return []
 
 
@@ -170,13 +189,13 @@ def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) ->
     """
 
     if flights:
-        html += '<div class="section-title">✈️ טיסות מומלצות (Google Flights)</div>'
+        html += '<div class="section-title">✈️ טיסות שנצפו בחיפוש עדכני</div>'
         for f in flights:
             html += f"""
             <div class="card">
                 <div class="card-title">{f['airline']} ({f['type']})</div>
                 <div>שעות: {f['departure_time']} ⬅️ {f['arrival_time']}</div>
-                <div class="price-tag">מחיר: {f['price']} לאדם</div>
+                <div class="price-tag">מחיר שנצפה: {f['price']} לאדם</div>
             </div>
             """
 
@@ -195,6 +214,11 @@ def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) ->
                 <div class="price-tag">החל מ: {h['lowest_price']} ללילה {sub_text}</div>
             </div>
             """
+    else:
+        html += (
+            '<div class="section-title">🏨 מלונות</div>'
+            '<div class="card">חיפוש מלונות חי אינו זמין כרגע. לא הוצגו מחירים לא מאומתים.</div>'
+        )
 
     html += '<div class="section-title">🗺️ מסלול יומי מפורט ועלויות</div>'
     for day in itinerary.days:
@@ -213,7 +237,7 @@ def build_pdf_document(itinerary: TripItinerary, flights: list, hotels: list) ->
 
     html += """
         <div class="footer">
-            הופק באמצעות סוכן הנסיעות הדיגיטלי | המחירים נדגמו בזמן אמת וכפופים לזמינות בעת הכרטוס
+            טיסות המוצגות מהוות תצפית חיפוש ואינן הבטחת מחיר או זמינות לכרטוס. יש לאמת לפני הזמנה.
         </div>
     </body>
     </html>
