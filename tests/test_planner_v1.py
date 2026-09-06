@@ -24,7 +24,11 @@ def request():
     start = date.today() + timedelta(days=30)
     return TripRequest(
         created_by_type=CreatedByType.CUSTOMER,
-        customer=CustomerContact(name="Private Customer", email="private@example.com", phone="0501234567"),
+        customer=CustomerContact(
+            name="Private Customer",
+            email="private@example.com",
+            phone="0501234567",
+        ),
         origin="Tel Aviv",
         destination="Rome",
         departure_date=start,
@@ -61,6 +65,29 @@ def verified_records(req):
     return EvidencePack(request_id=req.request_id, records=[flight, hotel]), flight, hotel
 
 
+def observed_flight(req):
+    record = EvidenceRecord(
+        type=EvidenceType.FLIGHT,
+        provider="travel.flight.search",
+        provider_reference="ffs-opt-1",
+        amount=Decimal("199"),
+        currency="USD",
+        source_status=EvidenceSourceStatus.UNVERIFIED,
+        normalized_data={
+            "carrier": "Aegean Airlines",
+            "departure": "2026-10-20 10:00 TLV",
+            "arrival": "2026-10-20 12:10 ATH",
+            "duration": "2h 10m",
+            "stops": 0,
+            "price_display": "USD 199",
+            "booking_ready": False,
+            "evidence_status": "observed",
+            "price_basis": "observed_search_result",
+        },
+    )
+    return EvidencePack(request_id=req.request_id, records=[record]), record
+
+
 def test_planning_context_excludes_customer_pii():
     req = request()
     pack, _, _ = verified_records(req)
@@ -86,18 +113,59 @@ def test_verified_commercial_options_are_copied_from_evidence():
     pack, flight, hotel = verified_records(req)
     narrative = PlannerNarrative(
         summary="A four-day Rome draft.",
-        days=[PlannerDay(day_number=1, title="Historic center", summary="Suggested walking day")],
+        days=[
+            PlannerDay(
+                day_number=1,
+                title="Historic center",
+                summary="Suggested walking day",
+            )
+        ],
     )
-    proposal = build_proposal_draft(req, pack, narrative=narrative, model_version="model-v1")
+    proposal = build_proposal_draft(
+        req,
+        pack,
+        narrative=narrative,
+        model_version="model-v1",
+    )
     assert proposal.status == ProposalStatus.AI_DRAFT
     assert proposal.flight_options[0]["amount"] == "500"
+    assert proposal.flight_options[0]["price_status"] == "verified"
     assert proposal.flight_options[0]["provider_reference"] == "flight-1"
     assert proposal.hotel_options[0]["amount"] == "120"
     assert proposal.hotel_options[0]["provider_reference"] == "hotel-1"
     assert set(proposal.evidence_ids) == {flight.evidence_id, hotel.evidence_id}
 
 
-def test_unverified_price_is_not_exposed_as_commercial_option():
+def test_observed_flight_is_displayed_without_becoming_verified_or_booking_ready():
+    req = request()
+    pack, flight = observed_flight(req)
+    proposal = build_proposal_draft(
+        req,
+        pack,
+        narrative=PlannerNarrative(summary="Draft", days=[]),
+        model_version="model-v1",
+    )
+
+    assert len(proposal.flight_options) == 1
+    option = proposal.flight_options[0]
+    assert option["carrier"] == "Aegean Airlines"
+    assert option["price_status"] == "observed"
+    assert option["observed_amount"] == "199"
+    assert option["observed_currency"] == "USD"
+    assert option["booking_ready"] is False
+    assert "amount" not in option
+    assert "currency" not in option
+    assert flight.evidence_id in proposal.evidence_ids
+    assert any("re-verified before booking" in warning for warning in proposal.warnings)
+
+    context = build_planning_context(req, pack)
+    exposed = context["evidence"][0]
+    assert exposed["observed_amount"] == "199"
+    assert "amount" not in exposed
+    assert exposed["details"]["booking_ready"] is False
+
+
+def test_unverified_hotel_price_is_not_exposed_as_commercial_option():
     req = request()
     unverified = EvidenceRecord(
         type=EvidenceType.HOTEL,
@@ -109,7 +177,12 @@ def test_unverified_price_is_not_exposed_as_commercial_option():
     )
     pack = EvidencePack(request_id=req.request_id, records=[unverified])
     narrative = PlannerNarrative(summary="Draft", days=[])
-    proposal = build_proposal_draft(req, pack, narrative=narrative, model_version="model-v1")
+    proposal = build_proposal_draft(
+        req,
+        pack,
+        narrative=narrative,
+        model_version="model-v1",
+    )
     assert proposal.hotel_options == []
     assert unverified.evidence_id not in proposal.evidence_ids
     assert any("verified hotel" in warning.lower() for warning in proposal.warnings)
@@ -118,7 +191,12 @@ def test_unverified_price_is_not_exposed_as_commercial_option():
 def test_no_narrative_returns_partial_draft_instead_of_inventing_itinerary():
     req = request()
     pack, _, _ = verified_records(req)
-    proposal = build_proposal_draft(req, pack, narrative=None, model_version="disabled")
+    proposal = build_proposal_draft(
+        req,
+        pack,
+        narrative=None,
+        model_version="disabled",
+    )
     assert proposal.status == ProposalStatus.PARTIAL_DRAFT
     assert proposal.daily_itinerary == []
     assert proposal.missing_information == ["itinerary_narrative"]
