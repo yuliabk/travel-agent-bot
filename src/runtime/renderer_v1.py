@@ -8,9 +8,18 @@ from src.contracts.travel_v1 import ProposalDraft, TripRequest
 def _price(option: dict) -> str:
     amount = option.get("amount")
     currency = option.get("currency")
-    if amount is None or not currency:
-        return "מחיר לא מאומת"
-    return f"{amount} {currency}"
+    if amount is not None and currency:
+        return f"{amount} {currency} (מאומת)"
+
+    observed_amount = option.get("observed_amount")
+    observed_currency = option.get("observed_currency")
+    if observed_amount is not None and observed_currency:
+        return f"{observed_amount} {observed_currency} (נצפה בחיפוש, לא מאומת להזמנה)"
+
+    display = option.get("price_display")
+    if display:
+        return f"{display} (נצפה בחיפוש, לא מאומת להזמנה)"
+    return "מחיר לא מאומת"
 
 
 def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str:
@@ -30,26 +39,46 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
     if proposal.flight_options:
         for option in proposal.flight_options:
             segments = option.get("segments") or []
-            airline = segments[0].get("airline") if segments and isinstance(segments[0], dict) else "טיסה"
-            lines.extend([
-                f"- **{airline or 'טיסה'}** - {_price(option)}",
-                f"  - מקור: `{option.get('provider', '')}`",
-                f"  - Evidence: `{option.get('evidence_id', '')}`",
-                f"  - זמן חיפוש: {option.get('searched_at', '')}",
-            ])
+            segment_airline = (
+                segments[0].get("airline")
+                if segments and isinstance(segments[0], dict)
+                else None
+            )
+            airline = option.get("carrier") or segment_airline or "טיסה"
+            lines.extend(
+                [
+                    f"- **{airline}** - {_price(option)}",
+                    f"  - סטטוס Evidence: `{option.get('price_status') or option.get('source_status', '')}`",
+                    f"  - מקור: `{option.get('provider', '')}`",
+                    f"  - Evidence: `{option.get('evidence_id', '')}`",
+                    f"  - זמן חיפוש: {option.get('searched_at', '')}",
+                ]
+            )
+            if option.get("departure") or option.get("arrival"):
+                lines.append(
+                    f"  - מסלול: {option.get('departure') or ''} → {option.get('arrival') or ''}"
+                )
+            if option.get("duration"):
+                lines.append(f"  - משך: {option.get('duration')}")
+            if option.get("stops") is not None:
+                lines.append(f"  - עצירות: {option.get('stops')}")
+            if option.get("price_status") == "observed":
+                lines.append("  - ⚠️ יש לאמת מחיר וזמינות לפני הזמנה או כרטוס.")
     else:
-        lines.append("- אין כרגע מחיר טיסה מאומת להצגה.")
+        lines.append("- אין כרגע מחיר טיסה מאומת או אפשרות טיסה נצפית להצגה.")
     lines.append("")
 
     lines.append("## 🏨 אפשרויות מלון מבוססות Evidence")
     if proposal.hotel_options:
         for option in proposal.hotel_options:
-            lines.extend([
-                f"- **{option.get('name') or 'מלון'}** - {_price(option)} ({option.get('price_basis') or 'בסיס מחיר לא ידוע'})",
-                f"  - מקור: `{option.get('provider', '')}`",
-                f"  - Evidence: `{option.get('evidence_id', '')}`",
-                f"  - זמן חיפוש: {option.get('searched_at', '')}",
-            ])
+            lines.extend(
+                [
+                    f"- **{option.get('name') or 'מלון'}** - {_price(option)} ({option.get('price_basis') or 'בסיס מחיר לא ידוע'})",
+                    f"  - מקור: `{option.get('provider', '')}`",
+                    f"  - Evidence: `{option.get('evidence_id', '')}`",
+                    f"  - זמן חיפוש: {option.get('searched_at', '')}",
+                ]
+            )
     else:
         lines.append("- אין כרגע מחיר מלון מאומת להצגה.")
     lines.append("")
@@ -57,7 +86,9 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
     if proposal.daily_itinerary:
         lines.append("## 🗺️ מסלול מוצע")
         for day in proposal.daily_itinerary:
-            lines.append(f"### יום {day.get('day_number', '')}: {day.get('title', '')}")
+            lines.append(
+                f"### יום {day.get('day_number', '')}: {day.get('title', '')}"
+            )
             if day.get("summary"):
                 lines.append(str(day["summary"]))
             for place in day.get("suggested_places", []) or []:
@@ -74,8 +105,10 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
         lines.extend([f"- {item}" for item in proposal.warnings])
         lines.append("")
 
-    lines.extend([
-        "---",
-        "**סטטוס:** טיוטת AI בלבד. המחירים כפופים לטריות ה-Evidence ולזמינות הספק. הצעה סופית מחייבת אישור סוכן אנושי.",
-    ])
+    lines.extend(
+        [
+            "---",
+            "**סטטוס:** טיוטת AI בלבד. Evidence נצפה אינו הבטחת מחיר או זמינות; הצעה סופית מחייבת אימות ואישור סוכן אנושי.",
+        ]
+    )
     return "\n".join(lines)
