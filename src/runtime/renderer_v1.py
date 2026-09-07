@@ -133,12 +133,27 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
             lines.append(f'| סך לינה לכל המקטעים — החל מ־ | {money(total, currency)}, חלופה אחת בכל מקטע ובכפוף לאישור תפוסה |')
     else:
         lines.append('| סך הלינה לכל הטיול | לא ניתן לחשב: חסר מחיר למקטע או שהמטבעות שונים |')
-    lines += ['| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |',
-              '| תחבורה ציבורית / רכב שכור / שילוב | קיימים מחירי רכב שנצפו להשוואה; תחבורה ציבורית ותוספות רכב עדיין דורשות תמחור |' if proposal.transport_options else '| תחבורה ציבורית / רכב שכור / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; טרם תומחר |',
+
+    rental_totals = {}
+    for option in proposal.transport_options:
+        rental_amount = amount(option.get('observed_amount') if option.get('observed_amount') is not None else option.get('amount'))
+        rental_currency = option.get('observed_currency') or option.get('currency')
+        if rental_amount is not None and rental_currency:
+            rental_totals[rental_currency] = min(rental_totals.get(rental_currency, rental_amount), rental_amount)
+    rental_requested = 'rental_car_requested' in request.preferences.constraints
+    lines.append('| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |')
+    if rental_totals:
+        rental_costs = ' / '.join(money(total, currency) for currency, total in sorted(rental_totals.items()))
+        lines.append(f'| רכב שכור — החל מ־ | {rental_costs}, מחיר שנצפה לכל תקופת ההשכרה; ביטוח, דלק, חניה, אגרות ותוספות עשויים להיות חסרים |')
+    elif rental_requested:
+        lines.append('| רכב שכור | התבקש חיפוש, אך לא התקבל מחיר שניתן להציג |')
+    else:
+        lines.append('| רכב שכור | לא התבקש חיפוש רכב |')
+    lines += ['| תחבורה ציבורית / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; מחירי התחבורה הציבורית טרם אומתו |',
               '| אטרקציות | פירוט לפי ימים בהמשך; סך משפחתי טרם אומת |',
               '| אוכל וביטוח נסיעות | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',
-              '**הסכום הידוע הוא ללינה בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
+              '**אלה רכיבי העלות שנמצאו בלבד, ולא מחיר החופשה כולה.** אין עדיין אפשרות לקבוע אם הטיול עומד בתקציב.', '']
     lines += render_attraction_costs(request, proposal)
     lines += ['## מסעדות ומחירי אוכל', 'המחירים הבאים הם טווח או רמת מחיר שפורסמו במפות Google בזמן החיפוש, ולא מחיר מובטח לארוחה בתאריכי הטיול. יש לבדוק תפריט עדכני, כשרות ואלרגנים מול המסעדה.']
     if proposal.restaurant_options:

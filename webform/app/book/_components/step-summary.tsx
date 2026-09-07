@@ -2,7 +2,7 @@
 
 import { FormData } from './booking-wizard'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Send, User, Mail, Phone, MapPin, Calendar, Users, Wallet, Heart, FileText, Plane } from 'lucide-react'
+import { ArrowRight, Send, User, Mail, Phone, MapPin, Calendar, Users, Wallet, Heart, FileText, Plane, Car } from 'lucide-react'
 
 interface Props { form: FormData; updateForm: (partial: Partial<FormData>) => void; onBack: () => void; onSubmit: () => void }
 export function StepSummary({ form, updateForm, onBack, onSubmit }: Props) {
@@ -11,7 +11,7 @@ export function StepSummary({ form, updateForm, onBack, onSubmit }: Props) {
     { icon: Plane, label: 'שדה נחיתה', value: form.destinationAirport },
     { icon: MapPin, label: 'מקומות לינה', value: (form.stays ?? []).map(stay => `${stay.destination}: ${stay.checkIn} עד ${stay.checkOut}`).join(' · ') || `כל הלילות ביעד: ${form.destination}` },
     { icon: Plane, label: 'שדות חלופיים לבדיקה', value: form.alternativeAirports || 'חלופות זמינות לפי שדה הנחיתה' },
-    { icon: User, label: 'שם', value: form?.name ?? '' }, { icon: Mail, label: 'מייל', value: form?.email ?? '' }, { icon: Phone, label: 'טלפון', value: form?.phone ?? '' }, { icon: Plane, label: 'מוצא', value: form?.origin ?? '' }, { icon: MapPin, label: 'יעד', value: form?.destination ?? '' }, { icon: Calendar, label: 'תאריכים', value: `${form?.dateFrom ?? ''} - ${form?.dateTo ?? ''}` }, { icon: Users, label: 'נוסעים', value: `${form?.adults ?? 0} מבוגרים, ${form?.children ?? 0} ילדים${(form?.childAges ?? []).length ? ` (גילים: ${form.childAges.join(', ')})` : ''}` }, { icon: Wallet, label: 'תקציב', value: `${form?.budgetAmount ?? ''} ${form?.currency ?? 'ILS'}` }, { icon: Plane, label: 'סוג טיסה', value: form?.flightStops === 'nonstop' ? 'טיסות ישירות' : form?.flightStops === 'oneStop' ? 'עד עצירה אחת' : 'כל הטיסות' }, { icon: Heart, label: 'סגנון נסיעה', value: (form?.travelStyles ?? []).join(', ') || 'לא נבחר' },
+    { icon: User, label: 'שם', value: form?.name ?? '' }, { icon: Mail, label: 'מייל', value: form?.email ?? '' }, { icon: Phone, label: 'טלפון', value: form?.phone ?? '' }, { icon: Plane, label: 'מוצא', value: form?.origin ?? '' }, { icon: MapPin, label: 'יעד', value: form?.destination ?? '' }, { icon: Calendar, label: 'תאריכים', value: `${form?.dateFrom ?? ''} - ${form?.dateTo ?? ''}` }, { icon: Users, label: 'נוסעים', value: `${form?.adults ?? 0} מבוגרים, ${form?.children ?? 0} ילדים${(form?.childAges ?? []).length ? ` (גילים: ${form.childAges.join(', ')})` : ''}` }, { icon: Wallet, label: 'תקציב', value: `${form?.budgetAmount ?? ''} ${form?.currency ?? 'ILS'}` }, { icon: Plane, label: 'סוג טיסה', value: form?.flightStops === 'nonstop' ? 'טיסות ישירות' : form?.flightStops === 'oneStop' ? 'עד עצירה אחת' : 'כל הטיסות' }, { icon: Car, label: 'השכרת רכב', value: form?.carRental ? 'כן - לחפש מחירי רכב ולהכניס לסיכום העלויות' : 'לא' }, { icon: Heart, label: 'סגנון נסיעה', value: (form?.travelStyles ?? []).join(', ') || 'לא נבחר' },
   ]
   return (
     <div className="space-y-6">

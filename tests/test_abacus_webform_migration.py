@@ -20,6 +20,7 @@ def base_payload(**overrides):
         children=0,
         budget="mid",
         flightStops="nonstop",
+        carRental=False,
         travelStyles=["culture", "food"],
         specialRequests="Near public transport",
     )
@@ -74,8 +75,15 @@ def test_complete_legacy_payload_maps_to_trip_request_v1():
     assert req.travelers.adults == 2
     assert req.preferences.flight_routing == FlightRoutingPreference.NONSTOP
     assert req.preferences.interests == ["culture", "food"]
+    assert req.preferences.constraints == []
     assert req.preferences.notes == "Near public transport"
     assert req.schema_version == "1.0.0"
+
+
+def test_rental_car_request_is_preserved_in_canonical_preferences():
+    result = migrate_abacus_payload(base_payload(carRental=True), complete_fields())
+    assert result.canonical_request is not None
+    assert "rental_car_requested" in result.canonical_request.preferences.constraints
 
 
 def test_one_stop_legacy_values_are_normalized():

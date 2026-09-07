@@ -36,6 +36,7 @@ class AbacusWebFormPayload(BaseModel):
     children: int = Field(default=0, ge=0, le=20)
     budget: Optional[str] = Field(default=None, max_length=100)
     flightStops: str = "any"
+    carRental: bool = False
     travelStyles: List[str] = Field(default_factory=list)
     specialRequests: Optional[str] = Field(default=None, max_length=4000)
 
@@ -125,6 +126,7 @@ def migrate_abacus_payload(
     preferences = TripPreferences(
         flight_routing=_routing(payload.flightStops),
         interests=payload.travelStyles,
+        constraints=["rental_car_requested"] if payload.carRental else [],
         notes=payload.specialRequests,
     )
 

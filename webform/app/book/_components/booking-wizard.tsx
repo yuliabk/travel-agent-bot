@@ -30,6 +30,7 @@ export interface FormData {
   budgetAmount: string
   currency: 'ILS' | 'USD' | 'EUR' | 'GBP'
   flightStops: 'any' | 'oneStop' | 'nonstop'
+  carRental: boolean
   travelStyles: string[]
   specialRequests: string
   consent: boolean
@@ -54,6 +55,7 @@ const defaultForm: FormData = {
   budgetAmount: '',
   currency: 'ILS',
   flightStops: 'any',
+  carRental: false,
   travelStyles: [],
   specialRequests: '',
   consent: false,
