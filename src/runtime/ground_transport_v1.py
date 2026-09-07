@@ -29,7 +29,7 @@ def ground_transport_plan(request, arrival_airports=()):
     }
 
 
-def render_ground_transport(request, flight_options):
+def render_ground_transport(request, flight_options, rental_options=()):
     plan = ground_transport_plan(request, [f.get('arrival_iata') for f in flight_options])
     lines = ['## תחבורה ציבורית או רכב שכור',
              'משווים טיסה יחד עם ההגעה ללינה והחזרה לשדה. טיסה זולה יותר אינה בהכרח חלופה זולה או נוחה יותר לטיול כולו.',
@@ -50,6 +50,27 @@ def render_ground_transport(request, flight_options):
         lines.append(f"| {display_date} | מ־{clean(leg['origin'])} אל {clean(leg['destination'])} | {status} |")
     if not plan['legs']:
         lines.append('| תאריכי הטיול | הגעה ללינה וחזרה לשדה | חסר שדה תעופה מאושר לבדיקת המעברים |')
+    if rental_options:
+        lines += ['', '### מחירי רכב שנצפו',
+                  'המחירים התקבלו ממנוע השוואה חיצוני דרך קישורי שותפים. יש לאמת גיל נהג, ביטוח, פיקדון, השתתפות עצמית, מדיניות דלק ותנאי ביטול לפני הזמנה.',
+                  '| רכב / ספק | קטגוריה | מחיר שנצפה לכל התקופה | פרטים |',
+                  '| --- | --- | --- | --- |']
+        for option in rental_options[:3]:
+            currency = option.get('observed_currency') or ''
+            amount = option.get('observed_amount')
+            price = f"{amount} {currency}" if amount is not None and currency else 'לא התקבל מחיר'
+            details = []
+            if option.get('transmission'):
+                details.append('אוטומטי' if option['transmission'] == 'automatic' else 'ידני' if option['transmission'] == 'manual' else 'גיר לא ידוע')
+            if option.get('mileage'):
+                details.append(str(option['mileage']))
+            if option.get('free_cancellation') is True:
+                details.append('ביטול חינם לפי הספק')
+            if option.get('deposit') is not None:
+                details.append(f"פיקדון מוצג: {option['deposit']} {currency}")
+            name = clean(option.get('name') or 'רכב')
+            vendor = clean(option.get('vendor') or 'ספק לא צוין')
+            lines.append(f"| {name} / {vendor} | {clean(option.get('category') or 'לא צוין')} | {price} | {clean(', '.join(details) or 'יש לבדוק תנאים בקישור')} |")
     lines += ['', 'בנוסף יש לתכנן נסיעות יומיות ב־' + ', '.join(clean(c) for c in plan['local_transport_cities']) + '.',
-              '**חישוב התקציב:** בוחרים תרחיש אחד — תחבורה ציבורית, רכב שכור או שילוב לפי מקטעים. אין לחבר את מחירי שתי החלופות במלואם, ואין לספור שוב דלק או כרטיסים שכבר נכללו. אין מחיר כולל מאומת לתחבורה כרגע.', '']
+              '**חישוב התקציב:** בוחרים תרחיש אחד - תחבורה ציבורית, רכב שכור או שילוב לפי מקטעים. אין לחבר את מחירי שתי החלופות במלואם, ואין לספור שוב דלק או כרטיסים שכבר נכללו. מחירי הרכב שנצפו אינם כוללים בהכרח את כל התוספות. אין מחיר כולל מאומת לתחבורה כרגע.', '']
     return lines

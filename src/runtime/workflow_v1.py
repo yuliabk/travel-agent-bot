@@ -30,6 +30,8 @@ def run_web_draft_workflow(
     evidence_searcher: Optional[Any] = None,
     flight_search: Optional[Any] = None,
     research_lookup: Optional[Any] = None,
+    rental_car_search: Optional[Any] = None,
+    attraction_lookup: Optional[Any] = None,
     planner: Optional[Any] = None,
     model_version: str = "planner-disabled",
     stays: Optional[List[StaySegment]] = None,
@@ -96,6 +98,16 @@ def run_web_draft_workflow(
     if flight_search is not None and evidence_searcher is None:
         workflow_warnings.append("Hotel commercial evidence search was not executed.")
 
+    if rental_car_search is not None:
+        try:
+            rentals = rental_car_search.search_rental_cars(request)
+            pack.records.extend(rentals)
+            if not rentals:
+                workflow_warnings.append("Open rental-car search returned no observed quotes.")
+        except Exception as exc:
+            log_provider_failure("rental_car_search", exc, request_id=request.request_id)
+            workflow_warnings.append("חיפוש מחירי הרכב השכור לא הושלם.")
+
     if research_lookup is not None:
         try:
             pack.records.extend(research_lookup.search_background(request))
@@ -119,6 +131,22 @@ def run_web_draft_workflow(
             except Exception as exc:
                 log_provider_failure("attraction_search", exc, request_id=request.request_id)
                 workflow_warnings.append("חיפוש מחירי האטרקציות לא הושלם. עלויות חסרות אינן אפס.")
+
+    if narrative is not None and attraction_lookup is not None:
+        try:
+            existing = {
+                (str(record.normalized_data.get("name") or "").casefold(), str(record.normalized_data.get("city") or "").casefold())
+                for record in pack.records
+                if record.type == EvidenceType.PLACE and record.normalized_data.get("kind") == "attraction"
+            }
+            open_records = attraction_lookup.search_attractions(request, narrative)
+            pack.records.extend(
+                record for record in open_records
+                if (str(record.normalized_data.get("name") or "").casefold(), str(record.normalized_data.get("city") or "").casefold()) not in existing
+            )
+        except Exception as exc:
+            log_provider_failure("open_attraction_lookup", exc, request_id=request.request_id)
+            workflow_warnings.append("חיפוש המידע הפתוח על האטרקציות לא הושלם.")
 
     proposal = build_proposal_draft(
         request,

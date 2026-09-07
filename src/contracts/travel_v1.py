@@ -227,6 +227,7 @@ class ProposalDraft(ContractModel):
     hotel_options: List[Dict[str, Any]] = Field(default_factory=list)
     restaurant_options: List[Dict[str, Any]] = Field(default_factory=list)
     attraction_options: List[Dict[str, Any]] = Field(default_factory=list)
+    transport_options: List[Dict[str, Any]] = Field(default_factory=list)
     daily_itinerary: List[Dict[str, Any]] = Field(default_factory=list)
     estimated_total: List[MoneyAmount] = Field(default_factory=list)
     evidence_ids: List[str] = Field(default_factory=list)

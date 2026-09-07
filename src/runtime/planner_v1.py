@@ -83,6 +83,17 @@ def _is_observed_flight(record: EvidenceRecord) -> bool:
     )
 
 
+def _is_observed_rental(record: EvidenceRecord) -> bool:
+    return (
+        record.type == EvidenceType.TRANSPORT
+        and record.normalized_data.get("kind") == "rental_car"
+        and record.normalized_data.get("evidence_status") == "observed"
+        and record.normalized_data.get("booking_ready") is False
+        and record.amount is not None
+        and record.currency is not None
+    )
+
+
 def _safe_evidence(record: EvidenceRecord) -> Dict[str, Any]:
     data: Dict[str, Any] = {
         "evidence_id": record.evidence_id,
@@ -200,6 +211,11 @@ def _commercial_option(record: EvidenceRecord) -> Dict[str, Any]:
             option["observed_currency"] = record.currency
         if normalized.get("price_display"):
             option["price_display"] = normalized.get("price_display")
+    elif _is_observed_rental(record):
+        option["price_status"] = "observed"
+        option["booking_ready"] = False
+        option["observed_amount"] = str(record.amount)
+        option["observed_currency"] = record.currency
     if record.type == EvidenceType.FLIGHT:
         option.update({
             "arrival_iata": normalized.get("arrival_iata"),
@@ -226,6 +242,14 @@ def _commercial_option(record: EvidenceRecord) -> Dict[str, Any]:
             "overall_rating": normalized.get("overall_rating"),
             "price_basis": normalized.get("price_basis"),
         })
+    elif record.type == EvidenceType.TRANSPORT and normalized.get("kind") == "rental_car":
+        option.update({key: normalized.get(key) for key in (
+            "kind", "name", "vendor", "category", "price_per_day", "transmission",
+            "passengers", "bags", "fuel_policy", "mileage", "free_cancellation",
+            "deposit", "excess", "included_protections", "booking_url",
+            "affiliate_link", "pickup_location", "dropoff_location", "rental_days",
+            "price_basis",
+        )})
     return option
 
 
@@ -245,8 +269,10 @@ def build_proposal_draft(
     observed_flights = [record for record in evidence_pack.records if _is_observed_flight(record) and record not in verified_flights]
     flights = [_commercial_option(record) for record in verified_flights + observed_flights]
     hotels = [_commercial_option(record) for record in verified if record.type == EvidenceType.HOTEL]
+    rentals = [_commercial_option(record) for record in evidence_pack.records if _is_observed_rental(record)]
     evidence_ids = [record.evidence_id for record in verified_flights + observed_flights]
     evidence_ids.extend(record.evidence_id for record in verified if record.type == EvidenceType.HOTEL)
+    evidence_ids.extend(record.evidence_id for record in evidence_pack.records if _is_observed_rental(record))
 
     warnings: List[str] = []
     missing: List[str] = []
@@ -293,6 +319,7 @@ def build_proposal_draft(
         flight_options=flights,
         hotel_options=hotels,
         attraction_options=[{**r.normalized_data, "searched_at": r.searched_at.isoformat()} for r in evidence_pack.records if r.type == EvidenceType.PLACE and r.normalized_data.get("kind") == "attraction"],
+        transport_options=rentals,
         restaurant_options=[{**r.normalized_data, "searched_at": r.searched_at.isoformat()} for r in evidence_pack.records if r.type == EvidenceType.PLACE and r.normalized_data.get("kind") == "restaurant"],
         daily_itinerary=daily_itinerary,
         estimated_total=[],

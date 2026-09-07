@@ -1,7 +1,7 @@
 from src.runtime.ground_transport_v1 import ground_transport_plan, render_ground_transport
 from src.runtime.planner_v1 import build_planning_context, build_proposal_draft, PlannerNarrative, PlannerDay
 from src.runtime.renderer_v1 import render_ai_draft_hebrew
-from src.contracts.travel_v1 import EvidencePack
+from src.contracts.travel_v1 import EvidencePack, EvidenceRecord, EvidenceSourceStatus, EvidenceType
 from tests.test_flexible_trip import split_request
 from tests.test_serpapi_client_v1 import request
 
@@ -36,3 +36,28 @@ def test_missing_airport_is_explicit_and_city_names_are_not_markup():
     text = '\n'.join(render_ground_transport(req, []))
     assert 'חסר שדה תעופה' in text
     assert 'City | Extra' not in text
+
+
+def test_observed_rental_quote_is_visible_but_not_counted_as_verified_total():
+    req = split_request()
+    rental = EvidenceRecord(
+        type=EvidenceType.TRANSPORT,
+        provider='octotrip/rental-cars',
+        provider_reference='https://example.test/car',
+        raw_reference='https://example.test/car',
+        amount=250,
+        currency='EUR',
+        source_status=EvidenceSourceStatus.UNVERIFIED,
+        normalized_data={
+            'kind': 'rental_car', 'evidence_status': 'observed', 'booking_ready': False,
+            'name': 'Economy car', 'vendor': 'Vendor', 'category': 'Economy',
+            'transmission': 'automatic', 'booking_url': 'https://example.test/car',
+            'price_basis': 'total_rental_observed',
+        },
+    )
+    pack = EvidencePack(request_id=req.request_id, records=[rental])
+    proposal = build_proposal_draft(req, pack, narrative=None, model_version='off')
+    rendered = render_ai_draft_hebrew(req, proposal)
+    assert 'מחירי רכב שנצפו' in rendered
+    assert '250 EUR' in rendered
+    assert proposal.estimated_total == []

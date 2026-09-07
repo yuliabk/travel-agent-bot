@@ -121,7 +121,7 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
             seen.add(key)
             lines += [f"**{flight.get('alternative_note') or 'חלופה'}**", flight_line(flight)]
         lines += ['עלות וזמן המעבר משדה חלופי למקום הלינה טרם אומתו ואינם כלולים במחיר הטיסה. יש לבדוק גם הגעה לשדה לטיסת החזרה.']
-    lines += [''] + render_ground_transport(request, proposal.flight_options)
+    lines += [''] + render_ground_transport(request, proposal.flight_options, proposal.transport_options)
     lines += ['', '## סיכום התקציב', '| רכיב | סכום ומצב |', '| --- | --- |']
     for index, (label, totals) in enumerate(segment_totals):
         costs = ' / '.join(money(total, currency) for currency, total in totals.items()) or 'חסר מחיר'
@@ -134,7 +134,7 @@ def render_ai_draft_hebrew(request: TripRequest, proposal: ProposalDraft) -> str
     else:
         lines.append('| סך הלינה לכל הטיול | לא ניתן לחשב: חסר מחיר למקטע או שהמטבעות שונים |')
     lines += ['| טיסות | נדרש אישור מחיר לכל הנוסעים; לא נכלל בסכום הלינה |' if proposal.flight_options else '| טיסות | חסר מחיר |',
-              '| תחבורה ציבורית / רכב שכור / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; טרם תומחר |',
+              '| תחבורה ציבורית / רכב שכור / שילוב | קיימים מחירי רכב שנצפו להשוואה; תחבורה ציבורית ותוספות רכב עדיין דורשות תמחור |' if proposal.transport_options else '| תחבורה ציבורית / רכב שכור / שילוב | בוחרים תרחיש אחד הכולל מעברים ונסיעות יומיות; טרם תומחר |',
               '| אטרקציות | פירוט לפי ימים בהמשך; סך משפחתי טרם אומת |',
               '| אוכל וביטוח נסיעות | טרם תומחרו |',
               '| עלות כוללת לטיול | עדיין לא ניתן לחשב — חסרים רכיבים מאומתים |', '',

@@ -34,6 +34,8 @@ from src.governance.audit_v1 import build_audit_bundle
 from src.governance.evals_v1 import evaluate_proposal
 from src.intake.abacus_webform_v1 import AbacusWebFormPayload, CanonicalCompletion, migrate_abacus_payload
 from src.providers.serpapi_client_v1 import SerpApiClientV1
+from src.providers.octotrip_rental_cars_v1 import OctoTripRentalCarsClientV1
+from src.providers.wikidata_attractions_v1 import WikidataAttractionsClientV1
 from src.runtime.flight_capability_runtime_v1 import SandboxFlightCapabilityInvokerV1
 from src.runtime.planner_v1 import GeminiPlannerV1, build_proposal_draft
 from src.runtime.provider_diagnostics import log_provider_failure
@@ -71,6 +73,20 @@ def _flight_search():
     return FlightSearchConsumerV1(SandboxFlightCapabilityInvokerV1())
 
 
+def _open_travel_enabled() -> bool:
+    return os.getenv("V1_OPEN_TRAVEL_ENABLED", "true").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _rental_car_search():
+    return OctoTripRentalCarsClientV1() if _open_travel_enabled() else None
+
+
+def _attraction_lookup():
+    return WikidataAttractionsClientV1() if _open_travel_enabled() else None
+
+
 class ContractInfo(BaseModel):
     schema_version: Literal["1.0.0"] = "1.0.0"
     external_side_effects: bool = False
@@ -78,6 +94,7 @@ class ContractInfo(BaseModel):
     live_search_enabled: bool = False
     governed_flight_search_enabled: bool = False
     model_planner_enabled: bool = False
+    open_travel_enabled: bool = False
 
 
 class NormalizeAbacusRequest(BaseModel):
@@ -223,6 +240,7 @@ def contract_info() -> ContractInfo:
         live_search_enabled=_env_enabled("V1_LIVE_SEARCH_ENABLED"),
         governed_flight_search_enabled=_flight_bridge_enabled(),
         model_planner_enabled=_env_enabled("V1_MODEL_PLANNER_ENABLED"),
+        open_travel_enabled=_open_travel_enabled(),
     )
 
 
@@ -248,6 +266,8 @@ def web_draft(req: WebDraftRequest) -> WebDraftWorkflowResult:
         destination_iata=req.destination_iata,
         evidence_searcher=_evidence_searcher(),
         flight_search=_flight_search(),
+        rental_car_search=_rental_car_search(),
+        attraction_lookup=_attraction_lookup(),
         planner=planner,
         model_version=config.GEMINI_MODEL if planner is not None else "planner-disabled",
         stays=req.stays,
