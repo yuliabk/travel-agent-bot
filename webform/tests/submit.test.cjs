@@ -25,7 +25,7 @@ async function main() {
     },
   })
   const body = { name: 'Test', email: 'test@example.com', origin: 'Tel Aviv', destination: 'Rome',
-    dateFrom: '2026-10-10', dateTo: '2026-10-13', budgetAmount: '5000', consent: true,
+    dateFrom: '2026-10-10', dateTo: '2026-10-13', budgetAmount: '5000', consent: true, carRental: true,
     originAirport: ' tlv ', destinationAirport: 'רומא — פיומיצ׳ינו (FCO)' }
   const submit = (value) => route.POST({ json: async () => value })
   const response = await submit(body)
@@ -37,6 +37,7 @@ async function main() {
   assert.equal(backend.destination_iata, 'FCO')
   assert.equal(backend.completion.origin, 'Tel Aviv')
   assert.equal(backend.payload.destination, 'Rome, Italy')
+  assert.equal(backend.payload.carRental, true)
   const automatic = await submit({ ...body, destinationAirport: '' })
   assert.equal(automatic.status, 200)
   assert.equal(JSON.parse(calls.at(-1).options.body).destination_iata, 'FCO')
