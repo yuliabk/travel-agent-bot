@@ -18,6 +18,7 @@ def payload(**overrides):
         children=0,
         budget="בינוני",
         flightStops="nonstop",
+        carRental=False,
         travelStyles=["תרבות"],
         specialRequests="Near public transport",
     )
@@ -54,6 +55,31 @@ class FakePlanner:
             summary="מסלול מוצע לרומא",
             days=[PlannerDay(day_number=1, title="המרכז ההיסטורי", summary="יום הליכה", suggested_places=["Colosseum"])],
         )
+
+
+class FakeRentalSearch:
+    def __init__(self):
+        self.calls = 0
+
+    def search_rental_cars(self, request):
+        self.calls += 1
+        return [EvidenceRecord(
+            type=EvidenceType.TRANSPORT,
+            provider="octotrip/rental-cars",
+            provider_reference="https://example.com/car",
+            raw_reference="https://example.com/car",
+            amount=Decimal("900"),
+            currency="ILS",
+            source_status=EvidenceSourceStatus.UNVERIFIED,
+            normalized_data={
+                "kind": "rental_car",
+                "evidence_status": "observed",
+                "booking_ready": False,
+                "price_basis": "total_rental_observed",
+                "name": "Compact",
+                "vendor": "Example Rental",
+            },
+        )]
 
 
 def test_missing_canonical_fields_stop_before_dependencies():
@@ -95,6 +121,33 @@ def test_complete_workflow_returns_traceable_ai_draft():
     assert "Evidence:" not in result.rendered_draft
     assert "[[Colosseum]]" in result.rendered_draft
     assert "אישור סוכן נסיעות" in result.rendered_draft
+
+
+def test_rental_provider_is_not_called_when_customer_did_not_request_car():
+    rental = FakeRentalSearch()
+    result = run_web_draft_workflow(payload(carRental=False), completion(), rental_car_search=rental)
+    assert rental.calls == 0
+    assert result.proposal is not None
+    assert result.proposal.transport_options == []
+    assert "לא התבקש חיפוש רכב" in result.rendered_draft
+
+
+def test_requested_rental_price_is_searched_and_shown_in_budget_summary():
+    rental = FakeRentalSearch()
+    result = run_web_draft_workflow(payload(carRental=True), completion(), rental_car_search=rental)
+    assert rental.calls == 1
+    assert result.proposal is not None
+    assert result.proposal.transport_options[0]["observed_amount"] == "900"
+    assert result.proposal.transport_options[0]["observed_currency"] == "ILS"
+    assert "רכב שכור — החל מ־" in result.rendered_draft
+    assert "900.00 ₪" in result.rendered_draft
+
+
+def test_requested_rental_without_provider_is_explicitly_reported():
+    result = run_web_draft_workflow(payload(carRental=True), completion())
+    assert result.proposal is not None
+    assert any("ספק מחירים אינו זמין" in warning for warning in result.proposal.warnings)
+    assert "התבקש חיפוש, אך לא התקבל מחיר" in result.rendered_draft
 
 
 def test_search_failure_degrades_to_partial_draft():
