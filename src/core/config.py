@@ -35,9 +35,19 @@ def _get_int(name: str, default: int) -> int:
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash").strip() or "gemini-3.5-flash"
 
-# --- SerpApi (flights & hotels) ---
+# --- SerpApi (legacy flights/hotels/maps evidence) ---
 SERPAPI_KEY = os.environ.get("SERPAPI_API_KEY", "")
 DEFAULT_ORIGIN_IATA = os.environ.get("DEFAULT_ORIGIN_IATA", "TLV")
+
+# --- Contract v1 hotel provider ---
+# Provider choice is deployment configuration only; callers never choose it.
+HOTEL_PROVIDER = os.environ.get("V1_HOTEL_PROVIDER", "booking_mcp").strip() or "booking_mcp"
+BOOKING_MCP_URL = os.environ.get(
+    "BOOKING_MCP_URL",
+    "https://mcp.hasdata.com/api/mcp?apis=booking",
+).strip()
+BOOKING_MCP_API_KEY = os.environ.get("BOOKING_MCP_API_KEY", "").strip()
+BOOKING_MCP_TIMEOUT_SECONDS = _get_int("BOOKING_MCP_TIMEOUT_SECONDS", 15)
 
 # --- Redis (session backend, optional - falls back to in-memory) ---
 REDIS_URL = os.environ.get("REDIS_URL", "")
