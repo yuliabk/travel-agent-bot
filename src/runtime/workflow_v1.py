@@ -98,7 +98,7 @@ def run_web_draft_workflow(
     if flight_search is not None and evidence_searcher is None:
         workflow_warnings.append("Hotel commercial evidence search was not executed.")
 
-    if rental_car_search is not None:
+    if payload.carRental and rental_car_search is not None:
         try:
             rentals = rental_car_search.search_rental_cars(request)
             pack.records.extend(rentals)
@@ -107,6 +107,8 @@ def run_web_draft_workflow(
         except Exception as exc:
             log_provider_failure("rental_car_search", exc, request_id=request.request_id)
             workflow_warnings.append("חיפוש מחירי הרכב השכור לא הושלם.")
+    elif payload.carRental:
+        workflow_warnings.append("חיפוש רכב שכור התבקש אך ספק מחירים אינו זמין כרגע.")
 
     if research_lookup is not None:
         try:
