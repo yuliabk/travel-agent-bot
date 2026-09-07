@@ -9,6 +9,7 @@ import { StepSummary } from './step-summary'
 import { ResultCard } from './result-card'
 import { LoadingAnimation } from './loading-animation'
 import { Check } from 'lucide-react'
+import { destinationAirportCode } from '@/lib/airports'
 
 export interface FormData {
   name: string
@@ -16,6 +17,11 @@ export interface FormData {
   phone: string
   origin: string
   destination: string
+  originAirport: string
+  destinationAirport: string
+  landingAirportManual?: boolean
+  alternativeAirports?: string
+  stays?: { destination: string; checkIn: string; checkOut: string }[]
   dateFrom: string
   dateTo: string
   adults: number
@@ -24,6 +30,7 @@ export interface FormData {
   budgetAmount: string
   currency: 'ILS' | 'USD' | 'EUR' | 'GBP'
   flightStops: 'any' | 'oneStop' | 'nonstop'
+  carRental: boolean
   travelStyles: string[]
   specialRequests: string
   consent: boolean
@@ -35,6 +42,11 @@ const defaultForm: FormData = {
   phone: '',
   origin: '',
   destination: '',
+  originAirport: '',
+  destinationAirport: '',
+  landingAirportManual: false,
+  alternativeAirports: '',
+  stays: [],
   dateFrom: '',
   dateTo: '',
   adults: 2,
@@ -43,6 +55,7 @@ const defaultForm: FormData = {
   budgetAmount: '',
   currency: 'ILS',
   flightStops: 'any',
+  carRental: false,
   travelStyles: [],
   specialRequests: '',
   consent: false,
@@ -58,7 +71,10 @@ export function BookingWizard() {
   const [error, setError] = useState<string | null>(null)
 
   const updateForm = (partial: Partial<FormData>) => {
-    setForm((prev: FormData) => ({ ...(prev ?? {}), ...partial }))
+    setForm((prev: FormData) => ({ ...prev, ...partial,
+      ...(partial.destination !== undefined && partial.destination !== prev.destination && !prev.landingAirportManual && partial.destinationAirport === undefined
+        ? { destinationAirport: destinationAirportCode(partial.destination) ?? '' } : {}),
+    }))
   }
 
   const handleSubmit = async () => {

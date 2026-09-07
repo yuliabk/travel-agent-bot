@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest } from 'next/server'
+import { airportCode, destinationAirportCode, canonicalDestination, destinationSuggestions } from '@/lib/airports'
 
 const API_TIMEOUT_MS = 90_000
 
@@ -12,6 +13,9 @@ const missingFieldLabels: Record<string, string> = {
   child_ages: 'גילי הילדים',
   departure_date: 'תאריך יציאה',
   return_date: 'תאריך חזרה',
+  origin_iata: 'שדה המראה',
+  destination_iata: 'שדה נחיתה',
+  stays: 'מקומות לינה ותאריכים רצופים לכל לילות הטיול',
 }
 
 function apiBase(): string {
@@ -36,6 +40,11 @@ export async function POST(request: NextRequest) {
       phone = '',
       origin = '',
       destination = '',
+      originAirport = '',
+      destinationAirport = '',
+      landingAirportManual = false,
+      alternativeAirports = '',
+      stays = [],
       dateFrom = '',
       dateTo = '',
       adults = 1,
@@ -44,6 +53,7 @@ export async function POST(request: NextRequest) {
       budgetAmount = '',
       currency = 'ILS',
       flightStops = 'any',
+      carRental = false,
       travelStyles = [],
       specialRequests = '',
       consent = false,
@@ -66,18 +76,39 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'יש להזין גיל עבור כל ילד.' }, { status: 400 })
     }
 
+    const originIata = airportCode(originAirport)
+    if (typeof destination !== 'string' || destinationSuggestions(destination).length) return Response.json({ error: 'בחרו את השם המתוקן של יעד הנסיעה או ציינו עיר ומדינה.' }, { status: 422 })
+    const destinationIata = destinationAirportCode(destination, destinationAirport, landingAirportManual === true)
+    if (!originIata || !destinationIata || originIata === destinationIata) {
+      return Response.json({ error: 'בחרו שדות המראה ונחיתה שונים ותקינים בפרטי הטיול.' }, { status: 422 })
+    }
+
+    if (!Array.isArray(stays) || stays.length > 6) return Response.json({ error: 'אפשר להזין עד שישה מקומות לינה.' }, { status: 422 })
+    let cursor = dateFrom
+    for (const stay of stays) {
+      if (typeof stay?.destination !== 'string' || !stay.destination.trim() || destinationSuggestions(stay.destination).length || stay.checkIn !== cursor || !/^\d{4}-\d{2}-\d{2}$/.test(stay.checkOut) || stay.checkOut <= stay.checkIn || stay.checkOut > dateTo) return Response.json({ error: 'בדקו שמות מקומות לינה ותאריכים: נדרשים לילות רצופים ללא חפיפה או לילות חסרים.' }, { status: 422 })
+      cursor = stay.checkOut
+    }
+    if (stays.length && cursor !== dateTo) return Response.json({ error: 'יש לכסות את כל לילות הטיול במקומות הלינה.' }, { status: 422 })
+    const alternativeCodes = typeof alternativeAirports === 'string' ? alternativeAirports.split(/[,\s]+/).filter(Boolean).map(airportCode) : [null]
+    if (alternativeCodes.length > 3 || alternativeCodes.some(code => !code)) return Response.json({ error: 'הזינו עד שלושה קודי שדות חלופיים בני שלוש אותיות.' }, { status: 422 })
     const backendPayload = {
+      stays: stays.map(stay => ({ destination: canonicalDestination(stay.destination), check_in: stay.checkIn, check_out: stay.checkOut })),
+      alternative_airports: alternativeCodes,
+      origin_iata: originIata,
+      destination_iata: destinationIata,
       payload: {
         name,
         email,
         phone: phone || null,
-        destination,
+        destination: canonicalDestination(destination),
         dateFrom,
         dateTo,
         adults: Number(adults) || 1,
         children: Number(children) || 0,
         budget: `${numericBudget} ${currency}`,
         flightStops,
+        carRental: carRental === true,
         travelStyles: Array.isArray(travelStyles) ? travelStyles : [],
         specialRequests: specialRequests || null,
       },

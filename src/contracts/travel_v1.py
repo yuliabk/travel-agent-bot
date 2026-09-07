@@ -89,6 +89,18 @@ class TripPreferences(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=4000)
 
 
+class StaySegment(BaseModel):
+    destination: str = Field(..., min_length=2, max_length=200)
+    check_in: date
+    check_out: date
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.check_out <= self.check_in:
+            raise ValueError("כל מקום לינה חייב לכלול לפחות לילה אחד")
+        return self
+
+
 class TripRequest(ContractModel):
     request_id: str = Field(default_factory=lambda: new_id("req"), min_length=8)
     created_at: datetime = Field(default_factory=utc_now)
@@ -103,12 +115,22 @@ class TripRequest(ContractModel):
     budget: Decimal = Field(..., gt=0)
     currency: str = Field(..., min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
     preferences: TripPreferences = Field(default_factory=TripPreferences)
+    stays: List[StaySegment] = Field(default_factory=list, max_length=6)
+    arrival_airport: Optional[str] = Field(default=None, pattern=r"^[A-Z]{3}$")
     consent_status: ConsentStatus
 
     @model_validator(mode="after")
     def validate_trip_window(self) -> "TripRequest":
         if self.return_date < self.departure_date:
             raise ValueError("return_date must be on or after departure_date")
+        if self.stays:
+            cursor = self.departure_date
+            for stay in self.stays:
+                if stay.check_in != cursor:
+                    raise ValueError("תאריכי הלינה צריכים להיות רצופים, ללא חפיפה או לילות חסרים")
+                cursor = stay.check_out
+            if cursor != self.return_date:
+                raise ValueError("מקומות הלינה צריכים לכסות את כל לילות הטיול")
         return self
 
 
@@ -171,6 +193,7 @@ class EvidencePack(ContractModel):
     request_id: str
     created_at: datetime = Field(default_factory=utc_now)
     records: List[EvidenceRecord] = Field(default_factory=list)
+    search_notes: List[str] = Field(default_factory=list)
 
     def get(self, evidence_id: str) -> Optional[EvidenceRecord]:
         return next((record for record in self.records if record.evidence_id == evidence_id), None)
@@ -202,6 +225,9 @@ class ProposalDraft(ContractModel):
     summary: str = ""
     flight_options: List[Dict[str, Any]] = Field(default_factory=list)
     hotel_options: List[Dict[str, Any]] = Field(default_factory=list)
+    restaurant_options: List[Dict[str, Any]] = Field(default_factory=list)
+    attraction_options: List[Dict[str, Any]] = Field(default_factory=list)
+    transport_options: List[Dict[str, Any]] = Field(default_factory=list)
     daily_itinerary: List[Dict[str, Any]] = Field(default_factory=list)
     estimated_total: List[MoneyAmount] = Field(default_factory=list)
     evidence_ids: List[str] = Field(default_factory=list)

@@ -14,6 +14,7 @@ from src.contracts.travel_v1 import (
 )
 from src.runtime.planner_v1 import (
     PlannerDay,
+    PlannerHotelSuggestion,
     PlannerNarrative,
     build_planning_context,
     build_proposal_draft,
@@ -186,6 +187,32 @@ def test_unverified_hotel_price_is_not_exposed_as_commercial_option():
     assert proposal.hotel_options == []
     assert unverified.evidence_id not in proposal.evidence_ids
     assert any("verified hotel" in warning.lower() for warning in proposal.warnings)
+
+
+def test_planner_hotel_suggestions_are_visible_without_price_claims():
+    req = request()
+    narrative = PlannerNarrative(
+        summary="Draft",
+        days=[],
+        hotel_suggestions=[
+            PlannerHotelSuggestion(
+                name="Example Central Hotel",
+                area="Historic center",
+                rationale="Convenient for a walking itinerary",
+            )
+        ],
+    )
+    proposal = build_proposal_draft(
+        req,
+        EvidencePack(request_id=req.request_id),
+        narrative=narrative,
+        model_version="model-v1",
+    )
+
+    assert proposal.hotel_options[0]["source_status"] == "ai_suggestion"
+    assert proposal.hotel_options[0]["price_status"] == "unverified"
+    assert "amount" not in proposal.hotel_options[0]
+    assert "currency" not in proposal.hotel_options[0]
 
 
 def test_no_narrative_returns_partial_draft_instead_of_inventing_itinerary():

@@ -1,5 +1,17 @@
 # YB Travel Agent — Multi-Channel AI Bot 🌍✈️
 
+## Keyless open travel providers
+
+Contract v1 can use two optional, read-only sources without credentials when
+`V1_OPEN_TRAVEL_ENABLED=true`:
+
+- OctoTrip Rental Cars MCP for observed rental-car comparison quotes.
+- Wikidata for attraction identity, descriptions and official-site links.
+
+Neither source is treated as booking-ready evidence. Rental prices must be
+rechecked with the linked supplier, and missing attraction admission prices
+remain unknown rather than being interpreted as free.
+
 > **עברית + English** · AI travel agent powered by **Google Gemini**, now serving **three channels** through a single shared brain: **WhatsApp**, **Email**, and a structured **Web Form**.
 
 ---
