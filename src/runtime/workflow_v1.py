@@ -29,6 +29,7 @@ def run_web_draft_workflow(
     destination_iata: Optional[str] = None,
     evidence_searcher: Optional[Any] = None,
     flight_search: Optional[Any] = None,
+    hotel_search: Optional[Any] = None,
     research_lookup: Optional[Any] = None,
     rental_car_search: Optional[Any] = None,
     attraction_lookup: Optional[Any] = None,
@@ -39,8 +40,10 @@ def run_web_draft_workflow(
 ) -> WebDraftWorkflowResult:
     """Run intake -> optional evidence -> optional narrative -> render.
 
-    Dependencies are injected so tests never require network/model calls.
-    Missing dependencies yield an explicit partial draft rather than invented data.
+    Dependencies are injected so tests never require network/model calls. When
+    no explicit hotel dependency is injected, the configured
+    ``travel.hotel.search@1`` provider is resolved internally. Missing
+    dependencies yield an explicit partial draft rather than invented data.
     """
     migration = migrate_abacus_payload(payload, completion)
     if not migration.is_complete or migration.canonical_request is None:
@@ -95,7 +98,28 @@ def run_web_draft_workflow(
             log_provider_failure("flight_capability", exc, request_id=request.request_id)
             workflow_warnings.append("Governed flight search capability failed; flight results may be incomplete.")
 
-    if flight_search is not None and evidence_searcher is None:
+    if hotel_search is None:
+        try:
+            from src.providers.hotel_provider_factory_v1 import configured_hotel_search
+
+            hotel_search = configured_hotel_search()
+        except Exception as exc:
+            log_provider_failure("hotel_provider_config", exc, request_id=request.request_id)
+            workflow_warnings.append("ספק המלונות שהוגדר אינו זמין כרגע.")
+
+    if hotel_search is not None:
+        try:
+            hotels = hotel_search.search_hotels(request)
+            # The dedicated capability is authoritative for hotel evidence when
+            # configured, so legacy hotel records are replaced rather than mixed.
+            pack.records = [record for record in pack.records if record.type != EvidenceType.HOTEL]
+            pack.records.extend(hotels)
+            if not hotels:
+                workflow_warnings.append("חיפוש המלונות הסתיים ללא מחיר זמין לתאריכים שנבחרו.")
+        except Exception as exc:
+            log_provider_failure("travel.hotel.search", exc, request_id=request.request_id)
+            workflow_warnings.append("חיפוש מחירי המלונות דרך ספק המלונות לא הושלם.")
+    elif evidence_searcher is None:
         workflow_warnings.append("Hotel commercial evidence search was not executed.")
 
     if payload.carRental and rental_car_search is not None:
